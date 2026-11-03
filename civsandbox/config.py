@@ -10,7 +10,7 @@ from dotenv import dotenv_values
 
 @dataclass(frozen=True)
 class Settings:
-    provider: str = "mock"
+    provider: str = "rule-based"
     api_key: str = field(default="", repr=False)
     model: str = ""
     max_calls: int = 40
@@ -29,10 +29,14 @@ class Settings:
             raise ValueError("Invalid AI budget, cooldown, or timeout")
 
     @classmethod
-    def load(cls, path: Path | None = None):
+    def load(cls, path: Path | None = None, *, provider: str | None = None):
         # Anchor to the project, not the editor's working directory. Env wins.
         path = path or Path(__file__).resolve().parent.parent / ".env"
         values = {**dotenv_values(path), **os.environ}
+        selected = provider or values.get("AI_PROVIDER") or "rule-based"
+        # Historical .env files must never activate the archived network adapter.
+        if selected == "gemini":
+            selected = "rule-based"
         memory_flag = (values.get("MEMORY_ENABLED") or "true").strip().lower()
         if memory_flag not in ("true", "false"):
             raise ValueError("MEMORY_ENABLED must be true or false")
@@ -45,19 +49,15 @@ class Settings:
             timings[name+"_ticks"] = math.ceil(seconds/.25)
         return cls(action_timing=ActionTiming(**timings), memory_enabled=memory_flag == "true",
                    memory_path=values.get("MEMORY_PATH") or "data/social_memory.json",
-                   provider=values.get("AI_PROVIDER", "mock"),
-                   api_key=values.get("GEMINI_API_KEY") or "",
-                   model=values.get("GEMINI_MODEL") or "",
-                   max_calls=int(values.get("MAX_AI_CALLS_PER_RUN", "40")),
-                   cooldown_ticks=int(values.get("AI_DECISION_COOLDOWN_TICKS", "40")),
-                   timeout_seconds=float(values.get("AI_TIMEOUT_SECONDS", "8")))
+                   provider=selected, max_calls=0,
+                   cooldown_ticks=int(values.get("AI_DECISION_COOLDOWN_TICKS", "40")))
 
 
 def create_provider(settings: Settings):
-    from .ai import GeminiDecisionProvider, MockDecisionProvider
     from .decisions import RuleBasedDecisionProvider
     if settings.provider == "rule-based":
         return RuleBasedDecisionProvider()
-    if settings.provider == "gemini":
-        return GeminiDecisionProvider(settings)
-    return MockDecisionProvider(settings)
+    if settings.provider == "mock":
+        from .ai import MockDecisionProvider
+        return MockDecisionProvider(settings)
+    raise ValueError("External providers are disabled in the offline-first application")

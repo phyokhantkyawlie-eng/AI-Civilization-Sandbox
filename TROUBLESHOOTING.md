@@ -8,13 +8,13 @@ Open the project root, select .venv/bin/python, and use F5 with the supplied mod
 
 From the project root run python -m pip install -r requirements.txt using Python 3.12. Keep assets/ beside civsandbox/. The sprites loader resolves assets relative to the package location, independent of the terminal directory. Asset preprocessing is optional and is documented in assets/inspection/README.md.
 
-## Gemini shows offline rules or fallback
+## Legacy API configuration
 
-The project-root .env must privately contain GEMINI_API_KEY and GEMINI_MODEL, and launch must select --provider gemini. Existing process environment variables override .env. The inspector and AI logs report pending requests, cooldowns, budgets, malformed/stale responses and errors. Run python -m civsandbox.smoke_test explicitly for a maximum of one real generation attempt. This requires a valid account, available structured-output model and network. Keep keys out of screenshots and reports.
+No key or Google SDK is required. Old AI_PROVIDER=gemini settings resolve to the local rule provider. The CLI accepts only rule-based or mock, and the historical external smoke entry point is disabled. The private .env is retained; do not share or commit it.
 
 ## Different results for the same normal-game seed
 
-The normal game restores its configured social history. Use a fresh MEMORY_PATH for a fresh session or use the experiment runner, which isolates every condition and trial. Offline experimental outcomes reproduce with the same code/configuration and fresh seed. Wall-clock duration varies. Live Gemini decisions also depend on sampling and latency.
+The normal game restores its configured social history. Use a fresh MEMORY_PATH for a fresh session or use the experiment runner, which isolates every condition and trial. Offline experimental outcomes reproduce with the same code/configuration and fresh seed. Wall-clock duration varies.
 
 ## Empty or older results
 

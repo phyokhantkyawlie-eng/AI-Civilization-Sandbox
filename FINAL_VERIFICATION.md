@@ -1,3 +1,5 @@
+> Historical Stage 8 report. The current offline-first baseline is documented in STAGE0_VERIFICATION.md; external API launch instructions in earlier reports are obsolete.
+
 # Final CSC472 verification — 3 November 2026
 
 ## Executed checks

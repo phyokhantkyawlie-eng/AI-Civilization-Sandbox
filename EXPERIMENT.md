@@ -30,7 +30,7 @@ Condition means, sample standard deviations and paired MEMORY_ON minus MEMORY_OF
 
 Offline seeds reproduce decisions and outcomes given identical configuration and code. Wall durations vary. Gemini model sampling and network timing make live outputs stochastic. Live trials run at .25 wall seconds per tick, allowing pending requests time to complete. The existing 12-tick stale-response rule still applies.
 
-Gemini batches require --provider gemini --allow-live and privately configured GEMINI_API_KEY/GEMINI_MODEL. Set --max-ai-calls explicitly. The budget is per trial, so an upper bound for a paired batch is 2 × runs × max-ai-calls. Fallbacks remain labeled under the Gemini provider; inspect fallback counts before interpreting results as model behavior. No live batch was executed for this stage.
+External-provider CLI execution is disabled in the offline-first build. Use rule-based or mock. API columns remain in the export schema for compatibility and are zero for current offline runs. Historical external-provider notes are archival only.
 
 Normal game history is ignored even if MEMORY_PATH is configured. Trials start with neutral trust and empty memories. Avoid interpreting audit trust stored in MEMORY_OFF as knowledge the agents could access. Initial food inequality, fixed NPC processing order, limited personalities, a single map scenario, and the absence of death mechanics constrain generalization.
 

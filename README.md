@@ -3,9 +3,22 @@
 CSC472 Artificial Intelligence final project for a two-student team. **Animated characters integrated into the existing main simulation:** Mira, Nyra, Kairo, and Ren use the supplied four-direction artwork, observed grid movement, and smooth render-only interpolation. Existing needs, resource rules, numeric personalities, stable IDs, provider architecture, and saved social histories remain available; this integration adds no Gemini, social-memory, or advanced action-animation features.
 
 
+
+## Current direction: offline-first (Stage 0)
+
+The normal game uses local Python rules. No API key, Google SDK, or network connection is required at runtime. `rule-based` is the default; `mock` remains an explicitly labeled offline test adapter. An old `AI_PROVIDER=gemini` setting resolves to rules. Normal game and experiment CLIs reject external providers, and the historical live smoke entry point is disabled. Existing private `.env` and social saves are preserved. Installation requires locally available packages or a prior dependency install.
+
+```bash
+cd "/Users/phyokhantkyaw/Phyo-Workspace/AI Civilization Sandbox"
+source .venv/bin/activate
+python -m civsandbox --provider rule-based --seed 42
+```
+
+Use `--scenario food_shortage` for the social scenario and `--headless --ticks 1000` for a terminal run. See [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) for current architecture, limitations and recovery, and [STAGE0_VERIFICATION.md](STAGE0_VERIFICATION.md) for executed checks. Historical API implementation notes below describe retained adapter code, not supported normal-game functionality.
+
 ## Setup on macOS / VS Code
 
-Tested with Python 3.12.13, Pygame 2.6.1, Pillow 13.0.0, pytest 9.2.0, google-genai 2.34.0, and python-dotenv 1.2.4. Use Python 3.12 for the tested Pygame wheel.
+Tested with Python 3.12.13, Pygame 2.6.1, Pillow 13.0.0, pytest 9.2.0, and python-dotenv 1.2.4. Use Python 3.12 for the tested Pygame wheel.
 
 ```bash
 cd "/Users/phyokhantkyaw/Phyo-Workspace/AI Civilization Sandbox"
@@ -112,7 +125,7 @@ civsandbox/
   ai.py             Structured output, mock/Gemini providers, plan scheduler
   perception.py     Local observations and offered valid actions
   config.py         .env settings and provider factory
-  smoke_test.py     Optional one-call live Gemini check
+  smoke_test.py     Disabled historical API entry point
   simulation.py     Tick orchestration, snapshots, action log, fixed scheduler
   rendering.py      Pygame drawing, inspector, controls, application loop
 tests/
@@ -135,66 +148,17 @@ Simulation state has no Pygame dependency. The fixed scheduler still advances fo
 
 ## Provider and memory configuration
 
-The app always works offline. Default `AI_PROVIDER=mock` is a deterministic test stand-in, clearly labeled **mock**, and never a genuine Gemini decision. Select a provider using `.env` or override with the CLI:
+The default is `rule-based`. `AI_PROVIDER=mock` or `--provider mock` selects the offline structured-decision test adapter. CLI selection overrides `.env`. API keys, model names, API budgets, and API timeouts in legacy `.env` files are ignored by normal configuration loading. The rule factory does not import the optional adapter.
+
+`.env` is optional. If needed, create it only when absent (do not overwrite an existing private file):
 
 ```bash
-python -m civsandbox --provider mock
-python -m civsandbox --provider rule-based
-python -m civsandbox --provider gemini
+[ -f .env ] || cp .env.example .env
 ```
 
-For real Gemini, copy the template and edit `.env` locally. Enter your private key and an available model ID from your Google AI Studio account. There is deliberately no hardcoded model default. Do not commit keys, paste them into screenshots, or enable HTTP debug logging with credentials present.
+`MEMORY_ENABLED`, `MEMORY_PATH`, and action timing settings remain supported. Normal sessions restore bounded social history; use a fresh history path or experiments for a fresh controlled run.
 
-```bash
-cp .env.example .env
-```
-
-```dotenv
-GEMINI_API_KEY=
-GEMINI_MODEL=
-AI_PROVIDER=mock
-MAX_AI_CALLS_PER_RUN=40
-AI_DECISION_COOLDOWN_TICKS=40
-AI_TIMEOUT_SECONDS=8
-MEMORY_ENABLED=true
-MEMORY_PATH=data/social_memory.json
-```
-
-Set `AI_PROVIDER=gemini` after entering a key and model, or launch with `--provider gemini`. Missing credentials/model, exhausted budgets, rate limits, malformed output, and network failures all trigger a usable local rule fallback. No key has been embedded in the project. `.env` and its variants are ignored by Git; `.env.example` is intentionally blank.
-
-### Decision pipeline and perception
-
-Local observation -> Gemini JSON-schema response -> strict parse to `Action` -> offered-choice check -> current local-state validation -> shared action execution -> simulation update/log.
-
-Gemini uses the official `google-genai` SDK's `client.models.generate_content`, `response_mime_type="application/json"`, and `response_json_schema`. Its schema requires an action enum, a nullable tile `{x, y}` or NPC-ID string target, and reasoning of 1–160 characters; request_id is an optional nullable string. MOVE_TO/GATHER require coordinates; EAT/REST/WAIT require null. Social actions require NPC IDs, and SHARE_FOOD/REFUSE_REQUEST must also provide the matching active request ID. No arbitrary code, tool calls, or model text is evaluated. Invalid schema and target choices are rejected. Returned decisions are revalidated against current inventory, position, energy, and resource stocks, since those can change while the request is pending.
-
-Each request contains only the NPC's name, personality, hunger, energy, food, position, own current goal, visible terrain/resources, nearby NPC names/positions, and currently valid choices. Visibility is Manhattan radius four without line-of-sight occlusion. Other NPC private needs/inventories and distant resources are excluded. Active food requests communicate the requester’s urgency explicitly. All AI path choices and fallback routes treat unseen tiles as blocked; the standalone Phase 2 rule provider retains its original full-map behavior. Own previous goals are allowed as self-knowledge. With memory enabled, up to six relevant records and outgoing trust toward visible peers are supplied; no hidden NPC state is added.
-
-A valid high-level MOVE_TO persists until arrival, REST until energy reaches 70, and GATHER until two food are carried or the action becomes invalid. EAT, WAIT, and all social actions are one-shot. No new model request is needed for each movement step. Urgent needs (energy at most 5, or hunger at least 70 with carried food) interrupt AI plans and use local rules. While pending or cooling down, local rules manage immediate needs and continue useful goals. If food is needed but none is visible, the local fallback explores visible walkable terrain to search, rather than assuming no food exists anywhere.
-
-### Responsiveness, budgets, and logs
-
-- One in-flight request per NPC, with at most four background workers overall. Workers receive detached context dictionaries and never mutate world/NPC state. Only the simulation thread validates and applies results.
-- Default per-agent cooldown: 40 simulation ticks between request attempts (10 seconds at 1x). Completed/invalid plans wait out the remaining cooldown. Long-running useful plans continue even after cooldown expires.
-- A global run budget reserves a call before dispatch. Failed and timed-out calls count; mock requests use zero API calls. Set `MAX_AI_CALLS_PER_RUN=0` to disable real requests. SDK retries are disabled, so one reservation means at most one generation attempt.
-- SDK HTTP timeout and main-thread request deadline default to eight wall-clock seconds. Late responses are discarded. Unfinished timed-out workers retain their slots, preventing unbounded replacement threads. Rate limits/network errors retry only on a later eligible cooldown, within budget.
-- Pause freezes simulation updates and application of results; an already-started request may finish in the background. Shutdown does not wait for network requests: workers are daemon threads, and SDK context managers close each client when its request finishes.
-- The UI shows provider, actual API calls/budget, selected NPC's most recent AI choice and explanation, and whether the current action uses fallback. Expected local execution during pending/cooldown periods is labeled fallback too; this does not necessarily mean an API failure. Full safe fallback reasons are in `snapshot()["ai"]` and `AI_DECISION` event entries.
-- Keys are never sent in the NPC prompt or status. Exceptions and raw model payloads are not logged. Output explanations redact the configured key and API-key-shaped text before display/logging.
-
-Fast headless runs do not wait for Gemini. They may finish before a network reply, so use the GUI or dedicated smoke test to verify live responses. Offline mock and rule-based providers support exact, fast experiments.
-
-### Optional live smoke test
-
-After configuring `.env`, this explicitly makes **at most one real API call**. It validates the returned decision without advancing the world while waiting. A failed API/schema check returns a nonzero exit status and a sanitized reason. It does not silently report fallback as a successful Gemini response.
-
-```bash
-python -m civsandbox.smoke_test
-# Or opt into the otherwise-skipped pytest case:
-RUN_GEMINI_SMOKE=1 python -m pytest tests/test_live_gemini.py -q
-```
-
-Official references read for implementation: [Google Gen AI Python SDK](https://googleapis.github.io/python-genai/), [structured output guidance](https://ai.google.dev/gemini-api/docs/structured-output), and [SDK HTTP options and retry definitions](https://github.com/googleapis/python-genai/blob/main/google/genai/types.py).
+The isolated `GeminiDecisionProvider` class remains in `ai.py` for compatibility with offline adapter-contract tests. It cannot be selected through the application factory or CLIs. Its optional SDK is no longer in `requirements.txt`. No live API test is part of this build.
 
 ## Phase 4 social rules
 
@@ -313,7 +277,7 @@ Observed rule-based runs from fresh histories, 1,000 ticks each:
 
 ## Stage 3 Gemini verification
 
-Run `python -m civsandbox.smoke_test` explicitly from the activated project environment after setting GEMINI_API_KEY and GEMINI_MODEL privately. This checks one structured response against the original local menu, validates it against the current world, and executes one action in an isolated food-shortage world. It respects a zero run budget. Its JSON report includes the model, API calls dispatched, validated response, execution result, error and fallback count. A successful smoke requires execution. The smoke itself never substitutes an offline choice.
+The historical external smoke test is disabled in the current offline-first build. Use `python -m civsandbox --headless --provider rule-based --ticks 1000 --seed 42` instead.
 
 The application labels missing Gemini configuration as **offline rules**. The selected villager's inspector shows its executed action, provider mode, fallback status, public explanation or fallback reason, and recent AI events for that villager. Responses expire after 12 simulation ticks even if their action remains legal. The wall-clock timeout, current-state validation, bounded workers, per-agent cooldown, and per-run budget also apply. The 12-tick limit gives a decision the same maximum lifetime as a social request. Fast headless runs and increased simulation speed can therefore discard more replies.
 

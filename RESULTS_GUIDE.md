@@ -36,4 +36,4 @@ Cooperation divides shares by resolved shares plus refusals. Average hunger divi
 
 Compare matched seeds and inspect per-trial variation before discussing averages. More sharing can coexist with higher hunger, so cooperation and welfare should be discussed together. Fixed NPC processing order, map layout, starting food inequality, occupancy recovery, scenario duration, local visibility, and provider fallbacks can confound conclusions. Code changes affect trajectories; do not pool earlier and current experiments without identifying the versions. Rule/mock outputs reproduce with fresh identical seeds and configuration. Gemini outputs also depend on model sampling, latency and stale-response rejection.
 
-Live Gemini batches require --allow-live. The Stage 7 verification used only genuine offline rule-based trials. No live decision-quality claim follows from the charts.
+External-provider CLI execution is disabled in the offline-first build. Use rule-based or mock. API columns remain in the export schema for compatibility and are zero for current offline runs. Historical external-provider notes are archival only.

@@ -237,10 +237,11 @@ def test_settings_env_precedence_and_provider_factory(tmp_path, monkeypatch):
     monkeypatch.delenv("GEMINI_MODEL", raising=False)
     monkeypatch.delenv("AI_PROVIDER", raising=False)
     config = Settings.load(path)
-    assert config.max_calls == 3 and config.model == "test-model"
+    assert config.max_calls == 0 and config.model == "" and config.api_key == ""
     assert isinstance(create_provider(config), MockDecisionProvider)
     assert create_provider(replace(config, provider="rule-based")).__class__.__name__ == "RuleBasedDecisionProvider"
-    assert isinstance(create_provider(replace(config, provider="gemini")), GeminiDecisionProvider)
+    with pytest.raises(ValueError, match="External providers are disabled"):
+        create_provider(replace(config, provider="gemini"))
     with pytest.raises(ValueError):
         Settings(max_calls=-1)
     with pytest.raises(ValueError):
@@ -248,7 +249,7 @@ def test_settings_env_precedence_and_provider_factory(tmp_path, monkeypatch):
 
 
 def test_official_sdk_uses_schema_timeout_and_no_retries(monkeypatch):
-    from google import genai
+    genai = pytest.importorskip("google.genai")
     captured = {}
     class FakeClient:
         def __init__(self, **kwargs):
@@ -350,7 +351,7 @@ def test_nested_malformed_response_is_atomic():
 
 
 def test_switch_to_unconfigured_gemini_labels_offline_rules():
-    offline = create_provider(Settings(provider="gemini"))
+    offline = GeminiDecisionProvider(Settings(provider="gemini"))
     mock = create_provider(Settings(provider="mock"))
     sim = Simulation(decision_provider=offline)
     sim.step()
@@ -361,7 +362,8 @@ def test_switch_to_unconfigured_gemini_labels_offline_rules():
 
 def test_sdk_wire_format_and_public_explanation(monkeypatch):
     """Exercise installed SDK serialization and response decoding without a network."""
-    import httpx
+    pytest.importorskip("google.genai")
+    httpx = pytest.importorskip("httpx")
     seen = []
     def send(client, request, **kwargs):
         payload = json.loads(request.content)

@@ -8,12 +8,12 @@ from .config import Settings, create_provider
 
 
 def main():
-    parser = argparse.ArgumentParser(description="AI Civilization Sandbox — Phase 4")
+    parser = argparse.ArgumentParser(description="AI Civilization Sandbox — Offline")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--ticks", type=int, default=100, help="Headless tick count (default: 100)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--scenario", choices=("default", "food_shortage"), default="default")
-    parser.add_argument("--provider", choices=["mock", "rule-based", "gemini"])
+    parser.add_argument("--provider", choices=["mock", "rule-based"])
     parser.add_argument("--animation-fps", type=float, default=8.0)
     args = parser.parse_args()
     if not math.isfinite(args.animation_fps) or args.animation_fps <= 0:
@@ -21,12 +21,9 @@ def main():
     if args.ticks < 0:
         parser.error("--ticks must be nonnegative")
     try:
-        settings = Settings.load()
-        if args.provider:
-            from dataclasses import replace
-            settings = replace(settings, provider=args.provider)
+        settings = Settings.load(provider=args.provider)
     except (ValueError, TypeError):
-        parser.error("Invalid AI configuration; check .env settings")
+        parser.error("Invalid offline configuration; check .env settings")
     from pathlib import Path
     memory_path = Path(settings.memory_path)
     if not memory_path.is_absolute():

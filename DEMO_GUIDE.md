@@ -26,17 +26,9 @@ MEMORY_PATH=/tmp/csc472-demo-b.json python -m civsandbox --provider rule-based -
 
 Point out unequal food and hunger, requests, responses, food transfers or refusals, trust changes and attributed speech bubbles. A refusal is a valid outcome. Present what the agents actually do during the run rather than promising a particular share. Speech templates and reaction labels are explicitly attributed to rules/events.
 
-## 3:30–4:20 · Gemini decision-making
+## 3:30–4:20 · Local decision-making
 
-Show the provider interface and the concise public explanation field. Explain local observations, current valid actions, structured output, revalidation, bounded background requests and fallbacks. Distinguish rule-based, mock and genuine Gemini sources.
-
-Only if a private key/model are configured and the one-call test is authorized:
-
-```bash
-python -m civsandbox.smoke_test
-```
-
-Read the report's actual API count, model, validation and execution result. If unavailable, explain the verified offline contracts and the remaining live verification requirement. Do not present an offline mock as a model response.
+Show decisions.py: needs priorities, persistent goals, BFS, and personality/trust-weighted social willingness. Show the Action interface and shared validator. Explain that the game is offline-first; mock means an offline test adapter, never a real model. External adapters are archived and not enabled by normal launch commands.
 
 ## 4:20–5:00 · Social memory
 
@@ -58,6 +50,6 @@ python -m civsandbox.experiments --provider rule-based --runs 3 --ticks 120 --se
 
 ## 6:30–7:20 · Limits and future work
 
-Discuss the single village scenario, four fixed personalities, stable NPC processing order, temporary corridor overlap, latency-dependent Gemini behavior, small samples and absent death mechanics. Future work could evaluate more seeds/scenarios and separately authorized live model trials. End with the executed verification results in FINAL_VERIFICATION.md.
+Discuss the single village scenario, four fixed personalities, stable NPC processing order, temporary corridor overlap, small samples and absent death mechanics. Future work could evaluate more seeds/scenarios and more complete local utility scoring. End with the executed verification results in FINAL_VERIFICATION.md.
 
 The gameplay overhaul adds paced activities, a normal needs/inventory panel and F3 developer details. Allow several seconds to gather/eat and complete social exchanges. Click bushes to show stock/regrowth. Stored experiment examples and the Stage 8 ZIP are pre-overhaul snapshots. Explain their code version when presenting them; no new research experiment was executed during the overhaul.

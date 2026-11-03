@@ -173,27 +173,17 @@ def run_batch(settings, runs, ticks, seed, output, scenario="food_shortage", tic
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--provider", choices=("rule-based", "mock", "gemini"), default="rule-based")
+    parser.add_argument("--provider", choices=("rule-based", "mock"), default="rule-based")
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--ticks", type=int, default=300)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--scenario", choices=("food_shortage",), default="food_shortage")
     parser.add_argument("--max-ai-calls", type=int, default=40)
-    parser.add_argument("--allow-live", action="store_true")
     parser.add_argument("--output-root", type=Path, default=Path("experiments"))
     args = parser.parse_args()
     if args.runs < 1 or args.ticks < 0 or args.max_ai_calls < 0:
         parser.error("runs must be positive; ticks and call budget must be nonnegative")
     settings = Settings(provider=args.provider, max_calls=args.max_ai_calls)
-    if args.provider == "gemini":
-        if not args.allow_live:
-            parser.error("Gemini batches require explicit --allow-live")
-        try:
-            settings = replace(Settings.load(), provider="gemini", max_calls=args.max_ai_calls)
-        except (ValueError, TypeError):
-            parser.error("Invalid Gemini configuration")
-        if not settings.api_key or not settings.model:
-            parser.error("Configure GEMINI_API_KEY and GEMINI_MODEL privately before live trials")
     output = args.output_root/datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     try:
         rows = run_batch(settings, args.runs, args.ticks, args.seed, output, args.scenario)

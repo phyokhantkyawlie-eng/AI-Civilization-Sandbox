@@ -31,6 +31,8 @@ class Agent:
         "sociability": 0.5, "curiosity": 0.5, "cooperation": 0.5,
     })
 
+    incapacitated_until: int = 0
+    recovery_grace_until: int = 0
     personality_name: str = "Balanced"
     trust: dict[str, int] = field(default_factory=dict)
     memories: list["Memory"] = field(default_factory=list)
@@ -43,6 +45,7 @@ class Agent:
         self.inventory = Inventory()
         self.food = food
         self.facing = "down"
+        self.incapacitated_until = self.recovery_grace_until = 0
         self.current_action, self.goal = current_action, goal
         self.personality = personality if personality is not None else {
             "sociability": 0.5, "curiosity": 0.5, "cooperation": 0.5}
@@ -65,12 +68,12 @@ class Agent:
 
 
 PERSONALITIES = (
-    ("Generous", {"empathy": 0.95, "cooperation": 0.9, "sharing": 0.95,
+    ("Generous", {"early_bird": 0.9, "empathy": 0.95, "cooperation": 0.9, "sharing": 0.95,
                   "trust_gain_rate": 1.0, "risk_aversion": 0.2, "sociability": 0.55, "curiosity": 0.5}),
-    ("Selfish", {"empathy": 0.15, "cooperation": 0.2, "sharing": 0.1,
+    ("Selfish", {"early_bird": 0.4, "empathy": 0.15, "cooperation": 0.2, "sharing": 0.1,
                  "trust_gain_rate": 1.0, "risk_aversion": 0.3, "sociability": 0.25, "curiosity": 0.5}),
-    ("Cautious", {"empathy": 0.55, "cooperation": 0.5, "sharing": 0.5,
+    ("Cautious", {"early_bird": 0.15, "empathy": 0.55, "cooperation": 0.5, "sharing": 0.5,
                   "trust_gain_rate": 0.4, "risk_aversion": 0.9, "sociability": 0.3, "curiosity": 0.3}),
-    ("Friendly", {"empathy": 0.8, "cooperation": 0.85, "sharing": 0.8,
+    ("Friendly", {"early_bird": 0.6, "empathy": 0.8, "cooperation": 0.85, "sharing": 0.8,
                   "trust_gain_rate": 1.0, "risk_aversion": 0.25, "sociability": 0.95, "curiosity": 0.7}),
 )

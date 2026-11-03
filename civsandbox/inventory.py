@@ -1,7 +1,15 @@
 """Small, validated item inventory. Quantities are the single source of truth."""
 from dataclasses import dataclass, field
 
-ITEM_NAMES = {"berries": "Berries"}
+@dataclass(frozen=True)
+class ItemDefinition:
+    name: str
+    hunger_reduction: int = 0
+
+
+# Extend this registry for later stages; no hunting/cooking items exist yet.
+ITEM_DEFINITIONS = {"berries": ItemDefinition("Berries", hunger_reduction=35)}
+ITEM_NAMES = {key: definition.name for key, definition in ITEM_DEFINITIONS.items()}
 
 
 @dataclass

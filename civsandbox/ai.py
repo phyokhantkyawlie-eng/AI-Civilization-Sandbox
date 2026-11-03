@@ -103,8 +103,12 @@ class PlanningDecisionProvider:
         self.social = social
         self.rule.bind_social(social)
 
+    def bind_routines(self, clock, survival):
+        self.rule.bind_routines(clock, survival)
+
     def begin_tick(self, tick, agents):
         self.tick, self.agents = tick, agents
+        self.rule.begin_tick(tick, agents)
 
     def report(self, agent, action=None, explanation=None, fallback=False, reason=""):
         state = self.status.setdefault(agent.id, {"decision": "none", "explanation": ""})

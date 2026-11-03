@@ -16,15 +16,19 @@ class StatusThresholds:
 
 def hunger_status(value, thresholds=StatusThresholds()):
     return ("Starving", (205, 85, 74)) if value >= thresholds.starving else (
-        ("Hungry", (209, 155, 64)) if value >= thresholds.hungry else ("Full", (106, 164, 104)))
+        ("Hungry", (209, 155, 64)) if value >= thresholds.hungry else ("Full" if value == 0 else "Okay", (106, 164, 104)))
 
 
 def energy_status(value, thresholds=StatusThresholds()):
     return ("Exhausted", (205, 85, 74)) if value <= thresholds.exhausted else (
-        ("Tired", (209, 155, 64)) if value <= thresholds.tired else ("Rested", (98, 156, 177)))
+        ("Tired", (209, 155, 64)) if value <= thresholds.tired else ("Rested" if value >= 90 else "Okay", (98, 156, 177)))
 
 
 def activity(agent, simulation):
+    if agent.incapacitated_until:
+        return "Recovering (temporary)"
+    if agent.goal and agent.goal.purpose == "rest":
+        return "Night rest"
     names = {a.id: a.name for a in simulation.agents}
     owner = simulation.progress.locks.get(agent.id)
     job = simulation.progress.jobs.get(owner)

@@ -61,6 +61,12 @@ class SocialSystem:
                 self.record(request.requester_id, request.recipient_id, "REQUEST_FOOD", "expired",
                             {request.requester_id: -2}, request.id)
 
+    def cancel_for(self, agent):
+        for request in list(self.active_requests(agent)):
+            del self.pending[request.id]
+            self.record(request.requester_id, request.recipient_id, "REQUEST_FOOD",
+                        "cancelled: incapacitated", {}, request.id)
+
     def trust_for(self, agent, other_id):
         return agent.trust.get(other_id, 0) if self.memory_enabled else 0
 
@@ -82,6 +88,8 @@ class SocialSystem:
         other = self.agents.get(action.target) if isinstance(action.target, str) else None
         if other is None or other.id == agent.id:
             return "invalid NPC target"
+        if agent.incapacitated_until or other.incapacitated_until:
+            return "NPC temporarily incapacitated"
         if not self.nearby(agent, other):
             return "NPC out of interaction range"
         if self.pacing and not self.pacing.allowed_social(action, agent):

@@ -17,6 +17,7 @@ class VisibleResources:
 
 
 def observe(agent, world, resources, agents=(), radius=4, social=None):
+    hungry = social.pacing.survival.hungry if social and social.pacing else 55
     x, y = agent.position
     visible = {(tx, ty) for ty in range(max(0, y-radius), min(world.height, y+radius+1))
                for tx in range(max(0, x-radius), min(world.width, x+radius+1))
@@ -46,7 +47,7 @@ def observe(agent, world, resources, agents=(), radius=4, social=None):
                   "goal": asdict(agent.goal) if agent.goal else None},
         "visibility": "Manhattan radius 4; no vision occlusion; unknown tiles unavailable",
         "nearby_npcs": [{"id": a.id, "name": a.name, "position": list(a.position),
-                        **({"looks_hungry": a.hunger >= 55, "carrying_food": a.food > 0}
+                        **({"looks_hungry": a.hunger >= hungry, "carrying_food": a.food > 0}
                            if social and social.nearby(agent, a) else {})} for a in agents
                         if a.id != agent.id and a.position in visible],
         "tiles": [{"position": [tx, ty], "terrain": world.tiles[ty][tx].value}

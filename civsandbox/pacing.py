@@ -1,5 +1,6 @@
 """Gameplay timers use fixed simulation ticks, never wall-clock sleeps."""
 from dataclasses import dataclass
+from .survival import SurvivalRules
 from .actions import ActionType, SOCIAL_ACTIONS, validate, execute
 
 
@@ -12,6 +13,7 @@ class ActionTiming:
     request_ticks: int = 8
     response_ticks: int = 10
     social_cooldown_ticks: int = 40
+    rest_ticks: int = 4
 
     def __post_init__(self):
         if self.needs_interval_ticks < 1:
@@ -20,14 +22,14 @@ class ActionTiming:
             raise ValueError("Action timing values must be nonnegative integers")
 
     def duration(self, action):
-        return {ActionType.GATHER: self.gather_ticks, ActionType.EAT: self.eat_ticks,
+        return {ActionType.REST: self.rest_ticks, ActionType.GATHER: self.gather_ticks, ActionType.EAT: self.eat_ticks,
                 ActionType.TALK: self.greeting_ticks, ActionType.REQUEST_FOOD: self.request_ticks,
                 ActionType.SHARE_FOOD: self.response_ticks,
                 ActionType.REFUSE_REQUEST: self.response_ticks}.get(action.kind, 0)
 
     @classmethod
     def instant(cls):
-        return cls(1, 0, 0, 0, 0, 0, 0)
+        return cls(1, 0, 0, 0, 0, 0, 0, 0)
 
 
 @dataclass
@@ -36,17 +38,29 @@ class InProgress:
     finish_tick: int
     source: str
     participants: tuple[str, ...]
+    duration_ticks: int
 
 
 class ActionProgress:
-    def __init__(self, timing, social):
+    def __init__(self, timing, social, survival=None):
         self.timing, self.social = timing, social
+        self.survival = survival or SurvivalRules()
+        self.duration_ticks = 0
         self.jobs = {}
         self.locks = {}
         self.cooldowns = {}
         self.sources = {}
         self.started = False
         self.completed = False
+
+    def duration_for(self, action, actor):
+        multiplier = self.survival.hunger_slowdown if action.kind == ActionType.GATHER and actor.hunger >= self.survival.inefficient_hunger else 1
+        return self.timing.duration(action)*multiplier
+
+    def cancel_for(self, actor_id):
+        owner = self.locks.get(actor_id)
+        if owner in self.jobs:
+            self.release(owner)
 
     def allowed_social(self, action, actor):
         if any(self.locks.get(key, actor.id) != actor.id for key in (actor.id, action.target)):
@@ -70,8 +84,10 @@ class ActionProgress:
 
     def execute(self, action, actor, world, resources, tick, source):
         self.started = self.completed = False
+        self.duration_ticks = 0
         job = self.jobs.get(actor.id)
         if job:
+            self.duration_ticks = job.duration_ticks
             self.sources[actor.id] = job.source
             if tick < job.finish_tick:
                 actor.current_action = job.action.kind.value
@@ -94,12 +110,12 @@ class ActionProgress:
             return True
         if not validate(action, actor, world, resources, self.social):
             return False
-        duration = self.timing.duration(action)
+        duration = self.duration_ticks = self.duration_for(action, actor)
         if duration == 0:
             self.completed = execute(action, actor, world, resources, tick, self.social)
             return self.completed
         participants = (actor.id, action.target) if action.kind in SOCIAL_ACTIONS else (actor.id,)
-        self.jobs[actor.id] = InProgress(action, tick+duration, source, participants)
+        self.jobs[actor.id] = InProgress(action, tick+duration, source, participants, duration)
         for member in participants:
             self.locks[member] = actor.id
         if len(participants) == 2:

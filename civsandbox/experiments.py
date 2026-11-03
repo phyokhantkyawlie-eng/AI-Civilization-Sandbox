@@ -1,7 +1,7 @@
 """Paired, isolated social-memory trials around the existing simulation."""
 import argparse
 import csv
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -56,7 +56,7 @@ def metrics(sim, hunger_sum, samples, fallback_count, elapsed):
 
 def run_trial(settings, seed, ticks, memory, scenario="food_shortage", tick_seconds=0.25):
     provider = create_provider(replace(settings, memory_enabled=memory))
-    sim = Simulation(seed, provider, memory_enabled=memory, memory_path=None, scenario=scenario, event_limit=max(4096, ticks*32), decision_trace_limit=100, timing=settings.action_timing)
+    sim = Simulation(seed, provider, memory_enabled=memory, memory_path=None, scenario=scenario, event_limit=max(4096, ticks*32), decision_trace_limit=100, timing=settings.action_timing, day_clock=settings.day_clock, survival=settings.survival)
     row = {"seed": seed, "condition": "MEMORY_ON" if memory else "MEMORY_OFF",
            "provider": settings.provider, "model": safe_text(settings.model, settings.api_key) if settings.provider == "gemini" else None,
            "status": "running", "initial_state_sha256": initial_fingerprint(sim)}
@@ -147,7 +147,7 @@ def export(output, config, rows):
 
 def run_batch(settings, runs, ticks, seed, output, scenario="food_shortage", tick_seconds=.25):
     output.mkdir(parents=True, exist_ok=False)
-    config = {"provider": settings.provider, "model": safe_text(settings.model, settings.api_key) if settings.provider == "gemini" else None,
+    config = {"day_clock": asdict(settings.day_clock), "survival": asdict(settings.survival), "action_timing": asdict(settings.action_timing), "provider": settings.provider, "model": safe_text(settings.model, settings.api_key) if settings.provider == "gemini" else None,
               "runs": runs, "ticks": ticks, "seeds": list(range(seed, seed+runs)),
               "action_timing_ticks": settings.action_timing.__dict__, "scenario": scenario, "max_ai_calls_per_trial": settings.max_calls,
               "cooldown_ticks": settings.cooldown_ticks, "timeout_seconds": settings.timeout_seconds,

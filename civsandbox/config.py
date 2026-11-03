@@ -4,6 +4,8 @@ from pathlib import Path
 import os
 import math
 from .pacing import ActionTiming
+from .daynight import DayClock
+from .survival import SurvivalRules
 
 from dotenv import dotenv_values
 
@@ -18,6 +20,8 @@ class Settings:
     timeout_seconds: float = 8.0
     memory_enabled: bool = True
     memory_path: str = "data/social_memory.json"
+    day_clock: DayClock = field(default_factory=DayClock)
+    survival: SurvivalRules = field(default_factory=SurvivalRules)
     action_timing: ActionTiming = field(default_factory=ActionTiming)
 
     def __post_init__(self):
@@ -40,14 +44,29 @@ class Settings:
         memory_flag = (values.get("MEMORY_ENABLED") or "true").strip().lower()
         if memory_flag not in ("true", "false"):
             raise ValueError("MEMORY_ENABLED must be true or false")
-        defaults = {"needs_interval": 1, "gather": 3.5, "eat": 2.5, "greeting": 2, "request": 2, "response": 2.5, "social_cooldown": 10}
+        defaults = {"needs_interval": 1, "gather": 3.5, "eat": 2.5, "greeting": 2, "request": 2, "response": 2.5, "social_cooldown": 10, "rest": 1}
         timings = {}
         for name, default in defaults.items():
             seconds = float(values.get(name.upper()+"_SECONDS", default))
             if not math.isfinite(seconds) or seconds <= 0:
                 raise ValueError("Action durations must be finite and positive")
             timings[name+"_ticks"] = math.ceil(seconds/.25)
-        return cls(action_timing=ActionTiming(**timings), memory_enabled=memory_flag == "true",
+        def seconds_to_ticks(name, default):
+            seconds = float(values.get(name, default))
+            if not math.isfinite(seconds) or seconds <= 0:
+                raise ValueError("Clock and recovery durations must be finite and positive")
+            return math.ceil(seconds/.25)
+        clock = DayClock(seconds_to_ticks("DAY_LENGTH_SECONDS", 600), int(values.get("DAY_START_HOUR", 8)))
+        survival = SurvivalRules(
+            hungry=int(values.get("SURVIVAL_HUNGRY", 55)),
+            inefficient_hunger=int(values.get("HUNGER_SLOW_THRESHOLD", 85)),
+            starvation=int(values.get("STARVATION_THRESHOLD", 100)),
+            rest_energy=int(values.get("REST_ENERGY_THRESHOLD", 20)),
+            collapse_energy=int(values.get("EXHAUSTION_THRESHOLD", 0)),
+            recovery_ticks=seconds_to_ticks("RECOVERY_SECONDS", 3),
+            grace_ticks=seconds_to_ticks("RECOVERY_GRACE_SECONDS", 30),
+            hunger_slowdown=int(values.get("HUNGER_SLOWDOWN", 2)))
+        return cls(day_clock=clock, survival=survival, action_timing=ActionTiming(**timings), memory_enabled=memory_flag == "true",
                    memory_path=values.get("MEMORY_PATH") or "data/social_memory.json",
                    provider=selected, max_calls=0,
                    cooldown_ticks=int(values.get("AI_DECISION_COOLDOWN_TICKS", "40")))

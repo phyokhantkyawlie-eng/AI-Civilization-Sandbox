@@ -42,7 +42,7 @@ class Feedback:
         for event in reversed(fresh):
             self.last_event = event["event_id"]
             actor = event.get("actor_id")
-            action = event["action"]
+            action = event.get("activity_action", event["action"])
             previous = self.notices.get(actor)
             if previous and previous.state == "rest" and action != "REST" and event.get("executed"):
                 self.notices.pop(actor, None)

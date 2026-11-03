@@ -12,14 +12,18 @@ from .social import SocialSystem
 from .world import generate_world, shortage_world
 from .characters import CHARACTERS
 from .occupancy import Occupancy
+from .daynight import DayClock
+from .survival import SurvivalRules
 from .pacing import ActionProgress, ActionTiming
 
 
 class Simulation:
     def __init__(self, seed: int = 42, decision_provider: DecisionProvider | None = None,
-                 memory_enabled: bool = True, memory_path=None, scenario="default", event_limit=8192, decision_trace_limit=0, timing=None):
+                 memory_enabled: bool = True, memory_path=None, scenario="default", event_limit=8192, decision_trace_limit=0, timing=None, day_clock=None, survival=None):
         if scenario not in ("default", "food_shortage"):
             raise ValueError("Unknown scenario")
+        self.clock = day_clock or DayClock()
+        self.survival = survival or SurvivalRules()
         self.scenario = scenario
         self.seed = seed
         self.rng = random.Random(seed)
@@ -31,7 +35,7 @@ class Simulation:
             agent.personality_name = label
             agent.personality = traits.copy()
         self.social = SocialSystem(self.agents, memory_enabled, memory_path)
-        self.progress = ActionProgress(timing or ActionTiming(), self.social)
+        self.progress = ActionProgress(timing or ActionTiming(), self.social, self.survival)
         self.social.pacing = self.progress
         self.social.request_lifetime = max(12, self.progress.timing.eat_ticks+self.progress.timing.response_ticks+12)
         self._closed = False
@@ -47,6 +51,8 @@ class Simulation:
         self.decision_provider = decision_provider or RuleBasedDecisionProvider()
         if hasattr(self.decision_provider, "bind_social"):
             self.decision_provider.bind_social(self.social)
+        if hasattr(self.decision_provider, "bind_routines"):
+            self.decision_provider.bind_routines(self.clock, self.survival)
         if event_limit is not None and (type(event_limit) is not int or event_limit < 1):
             raise ValueError("event_limit must be positive or None")
         self.decision_trace_limit = decision_trace_limit
@@ -58,32 +64,47 @@ class Simulation:
         self.tick = 0
         self.paused = False
 
+    @property
+    def time_of_day(self):
+        return self.clock.at(self.tick)
+
     def step(self) -> None:
         if self.paused:
             return
         self.tick += 1
         self.resources.replenish(self.tick)
         self.social.advance(self.tick)
+        hunger_before_tick = {agent.id: agent.hunger for agent in self.agents}
+        for agent in self.agents:
+            if (self.tick-1) % self.progress.timing.needs_interval_ticks == 0:
+                agent.advance_needs()
+            transition = self.survival.update(agent, self.tick)
+            if transition:
+                self.progress.cancel_for(agent.id)
+                if transition == "incapacitated":
+                    self.social.cancel_for(agent)
+                self.events.append({"tick": self.tick, "agent": agent.name, "actor_id": agent.id,
+                                    "action": "SURVIVAL", "result": transition})
         if hasattr(self.decision_provider, "begin_tick"):
             self.decision_provider.begin_tick(self.tick, self.agents)
         for agent in self.agents:
-            hunger_before = agent.hunger
-            if (self.tick-1) % self.progress.timing.needs_interval_ticks == 0:
-                agent.advance_needs()
+            hunger_before = hunger_before_tick[agent.id]
             hunger_at_decision = agent.hunger
             if self.decision_trace_limit:
                 context_summary = {"hunger": agent.hunger, "energy": agent.energy, "food": agent.food,
                                    "position": agent.position, "goal": asdict(agent.goal) if agent.goal else None,
                                    "visible_peers": [a.id for a in self.agents if a.id != agent.id
                                                      and sum(abs(x-y) for x,y in zip(a.position, agent.position)) <= 4],
-                                   "memory_enabled": self.social.memory_enabled}
+                                   "memory_enabled": self.social.memory_enabled,
+                                   "clock": asdict(self.time_of_day),
+                                   "incapacitated": bool(agent.incapacitated_until)}
                 if self.social.memory_enabled:
                     peers = set(context_summary["visible_peers"])
                     context_summary["directed_trust"] = {key: self.social.trust_for(agent, key) for key in peers}
                     context_summary["relevant_memory_count"] = len(self.social.relevant_memories(agent, peers))
                 context_summary["personality"] = agent.personality.copy()
                 context_summary["adjacent_peers"] = [
-                    {"id": other.id, "looks_hungry": other.hunger >= 55, "carrying_food": other.food > 0}
+                    {"id": other.id, "looks_hungry": other.hunger >= self.survival.hungry, "carrying_food": other.food > 0}
                     for other in self.agents if other.id != agent.id and self.social.nearby(agent, other)]
                 context_summary["local_resource_stock"] = sum(
                     stock for position, stock in self.resources.stocks().items()
@@ -91,7 +112,10 @@ class Simulation:
                 context_summary["resource_scope"] = (
                     "full map for rule policy" if not hasattr(self.decision_provider, "name") else "local")
             active_job = self.progress.jobs.get(agent.id)
-            if active_job:
+            if agent.incapacitated_until:
+                action = Action(ActionType.REST if agent.energy < 100 else ActionType.WAIT,
+                                reasoning="Temporary recovery; resting until able to act.")
+            elif active_job:
                 action = active_job.action
             elif self.progress.held(agent):
                 action = Action(ActionType.WAIT)
@@ -103,8 +127,11 @@ class Simulation:
             if isinstance(action, Action) and action.kind == ActionType.MOVE_TO:
                 from .actions import validate
                 if validate(action, agent, self.world, self.resources, self.social):
-                    next_position = self.occupancy.next_step(agent, action.target, self.world, self.agents)
-                    action = Action(ActionType.MOVE_TO, next_position, action.reasoning) if next_position else Action(ActionType.WAIT)
+                    if agent.hunger >= self.survival.inefficient_hunger and self.tick % self.survival.hunger_slowdown:
+                        action = Action(ActionType.WAIT, reasoning="Hunger slows travel.")
+                    else:
+                        next_position = self.occupancy.next_step(agent, action.target, self.world, self.agents)
+                        action = Action(ActionType.MOVE_TO, next_position, action.reasoning) if next_position else Action(ActionType.WAIT)
             decision_source = getattr(self.decision_provider, "name", "rule-based")
             status = getattr(self.decision_provider, "status", {}).get(agent.id, {})
             if status.get("fallback"):
@@ -121,10 +148,11 @@ class Simulation:
                 execute(action, agent, self.world, self.resources, self.tick, self.social)
             # Record all executed actions; the UI filters repeated movement/wait.
             self.events.append({"tick": self.tick, "agent": agent.name,
-                                "action": agent.current_action, "target": action.target,
+                                "action": ("ACTIVITY" if agent.current_action == "GATHER" and not self.progress.completed else agent.current_action),
+                                "activity_action": agent.current_action, "target": action.target,
                                 "actor_id": agent.id, "executed": self.progress.completed,
                                 "accepted_start": self.progress.started,
-                                "duration_seconds": self.progress.timing.duration(action)*.25,
+                                "duration_seconds": self.progress.duration_ticks*.25,
                                 "phase": "started" if self.progress.started else "completed" if self.progress.completed else "in_progress",
                                 "decision_source": self.progress.sources.get(agent.id, decision_source), "public_reason": action.reasoning,
                                 "destination": requested_target if action.kind == ActionType.MOVE_TO else None,
@@ -183,13 +211,13 @@ class Simulation:
             self.decision_provider.close()
 
     def snapshot(self) -> dict:
-        return {"scenario": self.scenario, "seed": self.seed, "tick": self.tick, "ai": self.ai_summary(),
+        return {"clock": asdict(self.time_of_day), "scenario": self.scenario, "seed": self.seed, "tick": self.tick, "ai": self.ai_summary(),
                 "memory_enabled": self.social.memory_enabled, "social_tick": self.social.tick,
                 "memory_persistence": self.social.persistence_status,
                 "pending_requests": [asdict(r) for r in self.social.pending.values()],
                 "agents": [{**asdict(agent), "food": agent.food} for agent in self.agents],
-                "resources": [{"position": list(p), "food": food}
-                              for p, food in self.resources.stocks().items()],
+                "resources": [{**asdict(bush), "food": bush.quantity}
+                              for bush in self.resources.bushes.values()],
                 "resource_changes": [asdict(change) for change in self.resources.changes],
                 "events": self.events.copy()}
 

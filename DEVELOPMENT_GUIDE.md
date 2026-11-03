@@ -1,4 +1,4 @@
-# Development guide — offline Stage 0
+# Development guide — offline survival Stage 1
 
 ## Direction and launch
 
@@ -27,7 +27,7 @@ For a new environment, use Python 3.12 and install `requirements.txt` from avail
 | Social | `social.py`: addressed expiring requests, nearby validation, transfers/refusals, directed trust consequences and bounded memory. Read history only through memory-enabled accessors. |
 | Presentation | `rendering.py`, `animation.py`, `sprites.py`, `feedback.py`, `ui_state.py`: cached art, render-only interpolation, inspector, controls and event-driven notices. Visual coordinates never update logical positions. |
 | Persistence/evaluation | Social JSON saves on clean exit; invalid history is preserved. Experiments use fresh providers, RNGs and no normal save path. `results.py` reads genuine exports and makes charts. |
-| Wildlife / player controller | Not implemented. Future responsibilities, not new modules for Stage 0. |
+| Wildlife / player controller | Not implemented. Future responsibilities, not new modules for Stage 1. |
 
 All providers return the existing frozen Action model: MOVE_TO, GATHER, EAT, REST, WAIT, REQUEST_FOOD, SHARE_FOOD, REFUSE_REQUEST, TALK. Do not bypass validation for a new decision source. Invalid actions must have no effects and receive a safe WAIT fallback. Decision explanations are public summaries, never unexecuted dialogue.
 
@@ -36,14 +36,14 @@ All providers return the existing frozen Action model: MOVE_TO, GATHER, EAT, RES
 - Mira (npc-1, generous/green), Ren (npc-2, selfish/red), Nyra (npc-3, cautious/purple), Kairo (npc-4, friendly/blue). IDs own history; names and art follow `characters.py`.
 - Hunger/energy 0–100, finite five-item berries inventories, gathering/eating/resting, deterministic regrowth and reachable food-shortage opportunities.
 - Policy priorities: respond to incoming requests when safe; eat when hungry and stocked; recover low energy; consider social actions; retain useful food goals; explore or WAIT. Social willingness combines personality, needs and directed trust with seeded probabilities. Memory-off reads neutral trust/empty recall.
-- Default action durations: gather 3.5 s, eat 2.5 s, greeting/request 2 s, response 2.5 s; social cooldown 10 s. Needs change once per simulated second. Duration settings map to ticks, not rendering frames.
+- Default action durations: gather 3.5 s, eat 2.5 s, rest 1 s per +8 unit, greeting/request 2 s, response 2.5 s; social cooldown 10 s. Needs change once per simulated second. Duration settings map to ticks, not rendering frames.
 - Social partners are held during exchanges, face each other, and release on completion/cancellation. Requests, sharing, refusal and greetings create actual events; accepted activity indicators are distinct from committed outcomes. Template dialogue is labeled as rule based.
 - Existing idle and four-direction walk frames remain intact. Other named animation states use idle fallbacks and indicators. 80 normalized frames load once per renderer at 40×50 with a common foot anchor; cached world graphics are reused.
 - Space/buttons pause or resume, arrows/buttons adjust speed, clicking selects villagers or bushes, F3 opens detailed inspection. Memories/trust remain in the detailed tabs.
 
 ## Gaps to preserve for later survival stages
 
-There is no death/health model, so survival metrics are unavailable. Berries are the only usable item; there is no cooking, wildlife or human decision controller. Social history persists, but physical world/inventory state is not a full game save. Rules use full-map resource knowledge, unlike the local structured adapter context. The current needs policy is priority based with a weighted social utility, not a general utility scorer across every action. Goal planning is limited to existing food/exploration/social routes. Corridor yielding deliberately permits temporary tile overlap after three blocked ticks. Resource/social/event histories are bounded audit windows, not unlimited archives. These are limitations, not new Stage 0 features.
+Temporary incapacitation and timed recovery now exist, but no death/health model does, so mortality/survival metrics remain unavailable. Berries are the only usable item; there is no cooking, wildlife or human decision controller. Social history persists, but physical world/inventory state is not a full game save. Rules use full-map resource knowledge, unlike the local structured adapter context. The current needs policy is priority based with a weighted social utility, not a general utility scorer across every action. Goal planning is limited to existing food/exploration/social routes. Corridor yielding deliberately permits temporary tile overlap after three blocked ticks. Resource/social/event histories are bounded audit windows, not unlimited archives. These remain limitations after Stage 1.
 
 ## Verification and future changes
 
@@ -62,3 +62,17 @@ Automated SDL dummy tests exercise real frame loading, directions, interpolation
 The main project previously had no Git repository. Pre-change source, artwork, tests and prior experiments are preserved in `delivery/offline_stage0_before.zip` (verified ZIP integrity, 284 files). Git commit `fcfbfbf` preserves the pre-offline application and safe ignore rules. Use `git show fcfbfbf:path/to/file` for a read-only comparison or extract the ZIP into a separate folder. Never overwrite the current project or private saves merely to inspect the baseline.
 
 Commit source, original/normalized artwork, tests, example settings and documentation. Ignore `.venv`, caches, `.env` variants, `data/`, `delivery/`, and generated `experiments/`/`artifacts/`. Do not delete ignored files. Normal `.env` and `data/` are excluded from recovery archives and Git; retain separate private backups as needed. Never include API keys, personal records or saved social histories in commits. No remote repository or upload is configured by this stage.
+
+## Stage 1 survival conventions
+
+`daynight.py` derives day/time/phase from the existing simulation tick; never store a second ticking wall clock. `survival.py` owns configurable consequence thresholds. Each agent stores only recovery deadlines, alongside existing authoritative hunger, energy and inventory. The renderer reads these values and derives labels; lighting surfaces are cached by bounded alpha (0–48).
+
+`Resources.bushes` is the authoritative collection of BerryBush records. Existing `available`/`stocks` APIs remain compatible. Growth progress follows the global tick modulo each bush's interval, resets visually when full, and repeated regeneration calls for the same tick cannot duplicate berries. Regeneration catches up across skipped absolute ticks. Bush IDs derive from coordinates, preserving reproducibility. Mutation ledgers retain the existing 8,192-record limit.
+
+Rules receive clock/survival settings through optional `bind_routines` and tick hooks, keeping the `decide(...) -> Action` contract. Numeric `early_bird` traits influence routine preferences. Priorities remain needs and valid social responses before optional routine behavior; urgent hunger bypasses night rest. Night rest occurs at the current walkable tile; entering houses and sleep animations are not implemented.
+
+The scheduler now times rest, freezes duration at activity acceptance, and lengthens hungry gathering. Hunger slows logical travel cadence; interpolation still follows observed steps. Completed gather events are distinct from generic ACTIVITY progress records, so measurement and presentation cannot claim premature collection. ItemDefinition metadata lives in the existing inventory registry; future items must use that same inventory and executor.
+
+Incapacitation cancels unfinished reservations and pending requests with a recorded cancellation, without transferring food or applying invented trust changes. Forced recovery uses validated REST actions. A minimum recovery deadline plus positive energy permits waking; starvation grace then allows food seeking. Continued scarcity may cause another temporary recovery, but there is no permanent unconscious state or death. Pause freezes every deadline. Experiments serialize clock, survival and timing configuration to distinguish this revision from historical results.
+
+Stage 1 verification: 188 passed, 1 skipped, 0 failures; two 4,800-tick seeded offline runs conserved food. See STAGE1_SURVIVAL.md for observed runs and executed checks. Git commit `34bec30` preserves the complete pre-Stage-1 offline baseline. Private `.env`, normal histories and original artwork remain untouched.

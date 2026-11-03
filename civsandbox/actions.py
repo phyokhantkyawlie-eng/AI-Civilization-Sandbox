@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from enum import Enum
 
+from .inventory import ITEM_DEFINITIONS
 from .agents import Agent
 from .resources import Resources
 from .world import Position, World
@@ -38,6 +39,8 @@ def valid_position(target) -> bool:
 
 def validate(action: Action, agent: Agent, world: World, resources: Resources, social=None) -> bool:
     if not isinstance(action, Action) or not isinstance(action.kind, ActionType):
+        return False
+    if agent.incapacitated_until and action.kind not in (ActionType.REST, ActionType.WAIT):
         return False
     if social is not None and social.pacing and social.active_requests(agent):
         if action.kind not in (ActionType.SHARE_FOOD, ActionType.REFUSE_REQUEST,
@@ -85,7 +88,7 @@ def execute(action: Action, agent: Agent, world: World, resources: Resources, ti
         agent.energy = max(0, agent.energy - 2)
     elif action.kind == ActionType.EAT:
         agent.inventory.remove("berries")
-        agent.hunger = max(0, agent.hunger - 35)
+        agent.hunger = max(0, agent.hunger - ITEM_DEFINITIONS["berries"].hunger_reduction)
     elif action.kind == ActionType.REST:
         agent.energy = min(100, agent.energy + 8)
     agent.current_action = action.kind.value

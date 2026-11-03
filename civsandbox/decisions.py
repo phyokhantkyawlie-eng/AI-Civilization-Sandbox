@@ -2,6 +2,8 @@
 import random
 from typing import Protocol
 
+from .daynight import DayClock
+from .survival import SurvivalRules
 from .actions import Action, ActionType, validate
 from .agents import Agent, Goal
 from .resources import Resources
@@ -16,28 +18,52 @@ class DecisionProvider(Protocol):
 class RuleBasedDecisionProvider:
     def __init__(self):
         self.social = None
+        self.clock = DayClock()
+        self.survival = SurvivalRules()
+        self.tick = 0
 
     def bind_social(self, social):
         self.social = social
 
+    def bind_routines(self, clock, survival):
+        self.clock, self.survival = clock, survival
+
+    def begin_tick(self, tick, agents):
+        self.tick = tick
+
+    def prefers_rest(self, agent):
+        now = self.clock.at(self.tick)
+        hour = now.hour+now.minute/60
+        early = agent.personality.get("early_bird", 0.5)
+        return hour >= 20+4*(1-early) or hour < 5+4*(1-early)
+
     def decide(self, agent, world, resources, rng) -> Action:
         if self.social and self.social.pacing:
             incoming = [r for r in self.social.active_requests(agent) if r.recipient_id == agent.id]
-            if incoming and agent.energy > 5 and agent.hunger < 85:
+            if incoming and agent.energy > 5 and agent.hunger < self.survival.inefficient_hunger:
                 response = self.social_choice(agent, world, resources, rng)
                 if response:
                     return response
         if agent.food > 0 and agent.hunger >= 30:
             return Action(ActionType.EAT)
-        if agent.energy <= 20 or (agent.current_action == "REST" and agent.energy < 70):
+        if agent.energy <= self.survival.rest_energy or (agent.current_action == "REST" and agent.energy < 70):
             return Action(ActionType.REST)
+
+        routine_rest = self.prefers_rest(agent)
+        urgent_food = agent.hunger >= self.survival.hungry and agent.food == 0
+        if routine_rest and not urgent_food:
+            agent.goal = Goal("rest", agent.position)
+            return Action(ActionType.REST if agent.energy < 90 else ActionType.WAIT,
+                          reasoning="Night routine; urgent food needs take priority.")
+        if agent.goal and agent.goal.purpose == "rest":
+            agent.goal = None
 
         social_action = self.social_choice(agent, world, resources, rng)
         if social_action:
             return social_action
 
         # Preserve a food goal until stocked, depleted, or unreachable.
-        needs_food = agent.food < 2
+        needs_food = agent.food < (2 if self.clock.at(self.tick).daylight else 1)
         if needs_food:
             if agent.goal and agent.goal.purpose == "food":
                 action = self.food_action(agent, agent.goal.target, world, resources)
@@ -109,7 +135,7 @@ class RuleBasedDecisionProvider:
                 return refuse
         peers = [other for other in social.agents.values()
                  if other.id != agent.id and social.nearby(agent, other)]
-        if peers and agent.hunger >= 55 and agent.food == 0:
+        if peers and agent.hunger >= self.survival.hungry and agent.food == 0:
             if any(r.requester_id == agent.id and any(p.id == r.recipient_id for p in peers)
                    for r in social.active_requests(agent)):
                 return Action(ActionType.WAIT)

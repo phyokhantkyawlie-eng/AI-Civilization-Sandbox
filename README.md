@@ -4,6 +4,19 @@ CSC472 Artificial Intelligence final project for a two-student team. **Animated 
 
 
 
+## Current survival loop — Stage 1
+
+The existing NPCs now follow a tick-driven daily routine: needs → goal → travel → timed work → actual inventory/resource effects → reevaluation. Hunger still rises toward 100, energy falls toward 0, eating one berry removes 35 hunger, and completed rest restores 8 energy. There are no duplicated UI need or food values.
+
+- Berry bushes have stable position-based IDs, quantity, capacity, interval and growth progress. Click one to inspect them. Available/depleted artwork remains distinct. Default regrowth adds one berry every 20 ticks (5 seconds); shortage bushes use 80 ticks (20 seconds). Growth uses shared simulation-time boundaries, remains capped, and does not require NPC visits.
+- Gather (3.5 seconds), eat (2.5 seconds), rest (1 second per recovery unit), and existing social activities use the existing nonblocking scheduler. Inventory and stock change only at completion after validation. `GATHER` outcome events occur only on success; `ACTIVITY` records describe accepted/in-progress gathering without claiming food was collected.
+- A day lasts 600 simulation seconds by default, starting at 08:00. Morning is 06–12, afternoon 12–18, evening 18–20, night 20–06. Dawn/dusk lighting is cached and affects presentation only. Early-bird personality values vary preferred sleep/wake windows. Daylight favors a two-berry reserve; other hours favor one. Food urgency and incoming requests can override routine rest.
+- At hunger 85+, gathering takes twice as long and travel advances at half its usual tick cadence. Hunger 100 or energy 0 triggers temporary recovery. NPCs rest through the same executor, recover after at least 3 seconds once energy is positive, then have 30 seconds of starvation grace to seek food. Exhaustion still interrupts at energy 0. Food is never created by recovery. No permanent death is implemented.
+
+All values above are configurable through `.env.example` (do not overwrite a private `.env`). `REST_SECONDS`, `DAY_LENGTH_SECONDS`, `DAY_START_HOUR`, survival thresholds, slowdown and recovery durations are local configuration. Pause freezes clock, growth, needs and activities; speed changes simulated time consistently. Berries remain the only Stage 1 item. The existing item registry now includes consumption metadata and can later add raw/cooked chicken without a second inventory.
+
+Launch with the existing command below, optionally adding `--scenario food_shortage`. For a faster day/night demonstration use `DAY_LENGTH_SECONDS=120 python -m civsandbox --provider rule-based`. See [STAGE1_SURVIVAL.md](STAGE1_SURVIVAL.md) for verification and limitations.
+
 ## Current direction: offline-first (Stage 0)
 
 The normal game uses local Python rules. No API key, Google SDK, or network connection is required at runtime. `rule-based` is the default; `mock` remains an explicitly labeled offline test adapter. An old `AI_PROVIDER=gemini` setting resolves to rules. Normal game and experiment CLIs reject external providers, and the historical live smoke entry point is disabled. Existing private `.env` and social saves are preserved. Installation requires locally available packages or a prior dependency install.

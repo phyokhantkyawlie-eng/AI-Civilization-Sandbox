@@ -6,6 +6,7 @@ from .world import Tile
 from .animation import SpriteAnimator, CharacterView
 from .feedback import Feedback
 from .characters import CHARACTERS
+from .inventory import ITEM_NAMES
 from .ui_state import activity, hunger_status, energy_status, StatusThresholds
 from .sprites import CharacterAssets, FOOT_ANCHOR, FRAME_SIZE
 
@@ -28,7 +29,6 @@ class Renderer:
         self.small = pygame.font.Font(None, 19)
         self.selected_id = None
         self.debug = False
-        self.thresholds = StatusThresholds()
         self.selected_bush = None
         self.inspector_tab = "State"
         self.memory_page = 0
@@ -38,6 +38,7 @@ class Renderer:
         self.character_rects = {}
         self.feedback = Feedback()
         self.ground_cache = {}
+        self.lighting_cache = {}
         self.name_labels = {}
         self.draw_feet = {}
         self.control_buttons = {}
@@ -116,6 +117,13 @@ class Renderer:
             background = pygame.Rect(rect.centerx-label.get_width()//2-4, y-1, label.get_width()+8, 16)
             pygame.draw.rect(self.screen, (29, 43, 41), background, border_radius=4)
             self.screen.blit(label, (background.x+4, y))
+        darkness = simulation.time_of_day.darkness
+        if darkness:
+            if darkness not in self.lighting_cache:
+                tint = pygame.Surface(self.map_rect.size, pygame.SRCALPHA)
+                tint.fill((15, 22, 55, darkness))
+                self.lighting_cache[darkness] = tint
+            self.screen.blit(self.lighting_cache[darkness], self.map_rect)
         self.draw_feedback()
         if self.debug:
             self.text("PAUSED" if simulation.paused else "RUNNING", (900, 82), title=True)
@@ -251,9 +259,8 @@ class Renderer:
     def draw_friendly_panel(self, simulation, ticker):
         pygame.draw.rect(self.screen, (24, 34, 39), (0, 0, 1100, 74))
         self.text("STARFALL VILLAGE", (20, 17), title=True)
-        minutes = 8*60+int(simulation.tick*.25)
-        day, hour, minute = minutes//1440+1, minutes%1440//60, minutes%60
-        self.text(f"Day {day}  ·  {hour:02d}:{minute:02d}", (20, 49), (193, 205, 181))
+        now = simulation.time_of_day
+        self.text(f"Day {now.day}  ·  {now.hour:02d}:{now.minute:02d}  ·  {now.period.title()}", (20, 49), (193, 205, 181))
         self.text("F3 · Details", (944, 24), (193, 205, 181))
         pygame.draw.rect(self.screen, (35, 49, 54), (892, 74, 204, 594), border_radius=10)
         self.text("Paused" if simulation.paused else "Village life", (906, 87), title=True)
@@ -262,23 +269,32 @@ class Renderer:
         if actor:
             self.text(actor.name, (906, 172), actor.color, title=True)
             self.screen.blit(self.small.render(activity(actor, simulation), True, (235, 222, 184)), (906, 207))
-            label, color = hunger_status(actor.hunger, self.thresholds)
+            rules = simulation.survival
+            thresholds = StatusThresholds(rules.hungry, rules.inefficient_hunger, rules.rest_energy, rules.collapse_energy)
+            label, color = hunger_status(actor.hunger, thresholds)
             self.draw_bar("Hunger", actor.hunger, label, color, 244)
-            label, color = energy_status(actor.energy, self.thresholds)
+            label, color = energy_status(actor.energy, thresholds)
             self.draw_bar("Energy", actor.energy, label, color, 300)
             self.text(f"Inventory ({actor.inventory.used}/{actor.inventory.capacity})", (906, 366))
-            self.text(f"Berries × {actor.food}", (906, 397), (226, 179, 161))
+            for row, (item, quantity) in enumerate(sorted(actor.inventory.items.items())):
+                self.text(f"{ITEM_NAMES[item]} × {quantity}", (906, 397+row*20), (226, 179, 161))
+            if not actor.inventory.used:
+                self.text("Empty", (906, 397), (193, 205, 181))
+            goal = actor.goal.purpose.title() if actor.goal else "Reevaluating"
+            self.screen.blit(self.small.render(f"Goal: {goal}", True, (193, 205, 181)), (906, 350))
             self.screen.blit(self.small.render(actor.personality_name, True, (193, 205, 181)), (906, 435))
         elif self.selected_bush is not None:
-            stock = simulation.resources.available(self.selected_bush)
+            bush = simulation.resources.bushes[self.selected_bush]
             self.text("Berry bush", (906, 172), title=True)
-            self.text(f"Berries × {stock}", (906, 213))
-            if stock < simulation.resources.capacity:
-                remaining = simulation.resources.replenish_interval-simulation.tick % simulation.resources.replenish_interval
-                self.text("Regrowing", (906, 252), (193, 205, 181))
-                self.text(f"Next berry in {remaining*.25:g}s", (906, 282))
+            self.text(f"Berries {bush.quantity}/{bush.capacity}", (906, 213))
+            self.screen.blit(self.small.render(f"{bush.id} · {bush.position}", True, (193, 205, 181)), (906, 242))
+            remaining = bush.ticks_until_regeneration
+            if remaining is not None:
+                self.text("Regrowing", (906, 272), (193, 205, 181))
+                self.text(f"Next berry in {remaining*.25:g}s", (906, 302))
+                self.draw_bar("Regeneration", 100*bush.regeneration_progress/bush.regeneration_interval, "", (106, 164, 104), 340)
             else:
-                self.text("Ready to gather", (906, 252))
+                self.text("Fully grown", (906, 272))
         else:
             self.text("Meet the villagers", (906, 172))
             self.screen.blit(self.small.render("Click a person or berry bush", True, (193, 205, 181)), (906, 207))

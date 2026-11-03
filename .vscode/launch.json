@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "AI Civilization Sandbox",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "civsandbox",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "args": [
+        "--seed",
+        "42",
+        "--provider",
+        "rule-based"
+      ]
+    },
+    {
+      "name": "AI Civilization Sandbox \u2014 Food shortage",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "civsandbox",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "args": [
+        "--seed",
+        "42",
+        "--provider",
+        "rule-based",
+        "--scenario",
+        "food_shortage"
+      ]
+    }
+  ]
+}

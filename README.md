@@ -4,6 +4,25 @@ CSC472 Artificial Intelligence final project for a two-student team. **Animated 
 
 
 
+## Current wildlife — Stage 2
+
+Two living chickens now inhabit the existing village. Their local IDLE/WANDER/FLEE state machine pecks, rests, wanders and escapes nearby active NPCs using the same walkable grid. Programmatic cream-colored chickens, pecking motions and a fleeing `!` need no new artwork or dependencies. Existing NPC walking/idle sheets remain unchanged.
+
+`HUNT` is a high-level action handled by the existing scheduler. It claims one identifiable living target, follows current positions with BFS and the existing occupancy system, and requires a continuous two-second adjacent catch window. Pursuits end after 20 seconds or 12 travel steps, when rest/berries take priority, or when the target/actor becomes invalid. Every final catch is revalidated through the common executor. A success removes the chicken from view and adds exactly one `raw_chicken`; a failure adds none. Successes and failures impose a 40-second actor cooldown. Unfinished hunts release claims on cancellation/exit.
+
+Rules consider hunting only at hunger 65+, with no carried berries or raw reserve, an inventory slot, sufficient energy (at least 40 by default), scarce reachable berries and a visible nearby unclaimed chicken. Risk aversion, curiosity, distance, hunger and existing food opportunities determine utility. Nearby berries, eating, low energy, useful social responses and routine rest can take priority. Rules retain at most one raw chicken per NPC. Respawning never commands an NPC to hunt.
+
+**Raw chicken is an ingredient for Stage 3. It cannot yet be eaten, cooked or shared through berry-sharing actions.** It never reduces hunger in this stage. Berries remain the immediate survival food, so hunting is optional.
+
+Replacement uses world ticks: default delay 60 seconds, default starting population two, maximum four. The maximum is a cap; replacements restore the starting population rather than breeding toward the maximum. New IDs spawn only on accessible unoccupied tiles. No instant replacement or unlimited growth occurs. `.env.example` documents population, movement, threat and pursuit settings; retain existing private `.env` files.
+
+```bash
+python -m civsandbox --provider rule-based --seed 42
+python -m civsandbox --provider rule-based --scenario food_shortage --seed 7
+```
+
+Use fresh social history when comparing seeds. Five seeds × two scenarios × 2,400 ticks produced zero default-village hunts and one successful shortage hunt (Mira, seed 7), with no attempts within one second of a spawn. These are small observed checks, not guaranteed outcomes. See [STAGE2_WILDLIFE.md](STAGE2_WILDLIFE.md).
+
 ## Current survival loop — Stage 1
 
 The existing NPCs now follow a tick-driven daily routine: needs → goal → travel → timed work → actual inventory/resource effects → reevaluation. Hunger still rises toward 100, energy falls toward 0, eating one berry removes 35 hunger, and completed rest restores 8 energy. There are no duplicated UI need or food values.

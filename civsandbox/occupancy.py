@@ -25,8 +25,8 @@ class Occupancy:
     def __init__(self):
         self.waits = {}
 
-    def next_step(self, agent, destination, world, agents):
-        occupied = {other.position for other in agents if other.id != agent.id}
+    def next_step(self, agent, destination, world, agents, extra_occupied=()):
+        occupied = {other.position for other in agents if other.id != agent.id} | set(extra_occupied)
         normal = world.path(agent.position, destination)
         if normal and normal[0] not in occupied:
             self.waits[agent.id] = 0

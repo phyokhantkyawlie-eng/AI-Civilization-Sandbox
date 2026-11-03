@@ -7,6 +7,7 @@ from dataclasses import asdict
 from .actions import Action, ActionType, SOCIAL_ACTIONS, execute
 from .decisions import DecisionProvider, RuleBasedDecisionProvider
 from .resources import Resources
+from .wildlife import Wildlife
 from .agents import Agent, PERSONALITIES
 from .social import SocialSystem
 from .world import generate_world, shortage_world
@@ -19,7 +20,7 @@ from .pacing import ActionProgress, ActionTiming
 
 class Simulation:
     def __init__(self, seed: int = 42, decision_provider: DecisionProvider | None = None,
-                 memory_enabled: bool = True, memory_path=None, scenario="default", event_limit=8192, decision_trace_limit=0, timing=None, day_clock=None, survival=None):
+                 memory_enabled: bool = True, memory_path=None, scenario="default", event_limit=8192, decision_trace_limit=0, timing=None, day_clock=None, survival=None, wildlife_settings=None):
         if scenario not in ("default", "food_shortage"):
             raise ValueError("Unknown scenario")
         self.clock = day_clock or DayClock()
@@ -35,7 +36,8 @@ class Simulation:
             agent.personality_name = label
             agent.personality = traits.copy()
         self.social = SocialSystem(self.agents, memory_enabled, memory_path)
-        self.progress = ActionProgress(timing or ActionTiming(), self.social, self.survival)
+        self.occupancy = Occupancy()
+        self.progress = ActionProgress(timing or ActionTiming(), self.social, self.survival, self.occupancy)
         self.social.pacing = self.progress
         self.social.request_lifetime = max(12, self.progress.timing.eat_ticks+self.progress.timing.response_ticks+12)
         self._closed = False
@@ -48,6 +50,9 @@ class Simulation:
             self.resources = Resources(self.world, capacity=1, replenish_interval=80)
         else:
             self.resources = Resources(self.world)
+        self.wildlife = Wildlife(self.world, self.agents, seed, wildlife_settings)
+        self.resources.wildlife = self.wildlife
+        self.progress.wildlife = self.wildlife
         self.decision_provider = decision_provider or RuleBasedDecisionProvider()
         if hasattr(self.decision_provider, "bind_social"):
             self.decision_provider.bind_social(self.social)
@@ -57,7 +62,6 @@ class Simulation:
             raise ValueError("event_limit must be positive or None")
         self.decision_trace_limit = decision_trace_limit
         self.decision_trace = []
-        self.occupancy = Occupancy()
         self.event_limit = event_limit
         self.events: list[dict] = []
         self._event_sequence = 0
@@ -73,6 +77,9 @@ class Simulation:
             return
         self.tick += 1
         self.resources.replenish(self.tick)
+        self.wildlife.advance(self.tick, self.world, self.agents)
+        self.events.extend(self.wildlife.events)
+        self.wildlife.events.clear()
         self.social.advance(self.tick)
         hunger_before_tick = {agent.id: agent.hunger for agent in self.agents}
         for agent in self.agents:
@@ -130,7 +137,8 @@ class Simulation:
                     if agent.hunger >= self.survival.inefficient_hunger and self.tick % self.survival.hunger_slowdown:
                         action = Action(ActionType.WAIT, reasoning="Hunger slows travel.")
                     else:
-                        next_position = self.occupancy.next_step(agent, action.target, self.world, self.agents)
+                        next_position = self.occupancy.next_step(agent, action.target, self.world, self.agents,
+                                                                 [c.position for c in self.wildlife.living()])
                         action = Action(ActionType.MOVE_TO, next_position, action.reasoning) if next_position else Action(ActionType.WAIT)
             decision_source = getattr(self.decision_provider, "name", "rule-based")
             status = getattr(self.decision_provider, "status", {}).get(agent.id, {})
@@ -148,7 +156,7 @@ class Simulation:
                 execute(action, agent, self.world, self.resources, self.tick, self.social)
             # Record all executed actions; the UI filters repeated movement/wait.
             self.events.append({"tick": self.tick, "agent": agent.name,
-                                "action": ("ACTIVITY" if agent.current_action == "GATHER" and not self.progress.completed else agent.current_action),
+                                "action": ("ACTIVITY" if agent.current_action in ("GATHER", "HUNT") and not self.progress.completed else agent.current_action),
                                 "activity_action": agent.current_action, "target": action.target,
                                 "actor_id": agent.id, "executed": self.progress.completed,
                                 "accepted_start": self.progress.started,
@@ -174,6 +182,8 @@ class Simulation:
             assert 0 <= agent.hunger <= 100 and 0 <= agent.energy <= 100
             assert 0 <= agent.inventory.used <= agent.inventory.capacity
 
+        self.events.extend(self.wildlife.events)
+        self.wildlife.events.clear()
         self.events.extend(self.social.events)
         self.social.events.clear()
         if hasattr(self.decision_provider, "audit_events"):
@@ -204,6 +214,8 @@ class Simulation:
         self._closed = True
         self.progress.cancel_all()
         self.social.close()
+        self.events.extend(self.wildlife.events)
+        self.wildlife.events.clear()
         self.events.extend(self.social.events)
         self.social.events.clear()
         self.number_events()
@@ -211,7 +223,11 @@ class Simulation:
             self.decision_provider.close()
 
     def snapshot(self) -> dict:
-        return {"clock": asdict(self.time_of_day), "scenario": self.scenario, "seed": self.seed, "tick": self.tick, "ai": self.ai_summary(),
+        return {"chickens": [asdict(c) for c in self.wildlife.chickens.values()],
+                "wildlife_respawns": self.wildlife.respawns.copy(),
+                "hunt_cooldowns": self.wildlife.cooldowns.copy(),
+                "pursuits": {key: asdict(p) for key,p in self.wildlife.pursuits.items()},
+                "clock": asdict(self.time_of_day), "scenario": self.scenario, "seed": self.seed, "tick": self.tick, "ai": self.ai_summary(),
                 "memory_enabled": self.social.memory_enabled, "social_tick": self.social.tick,
                 "memory_persistence": self.social.persistence_status,
                 "pending_requests": [asdict(r) for r in self.social.pending.values()],

@@ -11,6 +11,7 @@ from .world import Position, World
 class ActionType(str, Enum):
     MOVE_TO = "MOVE_TO"
     GATHER = "GATHER"
+    HUNT = "HUNT"
     EAT = "EAT"
     REST = "REST"
     WAIT = "WAIT"
@@ -37,7 +38,7 @@ def valid_position(target) -> bool:
             and all(type(value) is int for value in target))
 
 
-def validate(action: Action, agent: Agent, world: World, resources: Resources, social=None) -> bool:
+def validate(action: Action, agent: Agent, world: World, resources: Resources, social=None, *, final=False) -> bool:
     if not isinstance(action, Action) or not isinstance(action.kind, ActionType):
         return False
     if agent.incapacitated_until and action.kind not in (ActionType.REST, ActionType.WAIT):
@@ -61,6 +62,9 @@ def validate(action: Action, agent: Agent, world: World, resources: Resources, s
         return (agent.energy > 0 and agent.inventory.used < agent.inventory.capacity
                 and resources.available(action.target) > 0
                 and agent.position in world.neighbors(action.target))
+    if action.kind == ActionType.HUNT:
+        wildlife = getattr(resources, "wildlife", None)
+        return wildlife is not None and wildlife.can_hunt(agent, action.target, world, final=final)
     if action.target is not None:
         return False
     if action.kind == ActionType.EAT:
@@ -72,9 +76,12 @@ def validate(action: Action, agent: Agent, world: World, resources: Resources, s
 
 def execute(action: Action, agent: Agent, world: World, resources: Resources, tick: int, social=None) -> bool:
     """Invalid actions are atomic no-ops. MOVE_TO advances one BFS step."""
-    if not validate(action, agent, world, resources, social):
+    if not validate(action, agent, world, resources, social, final=True):
         return False
-    if action.kind in SOCIAL_ACTIONS:
+    if action.kind == ActionType.HUNT:
+        if not resources.wildlife.complete(agent, action.target):
+            return False
+    elif action.kind in SOCIAL_ACTIONS:
         social.perform(action, agent)
     elif action.kind == ActionType.MOVE_TO:
         next_position = world.path(agent.position, action.target)[0]

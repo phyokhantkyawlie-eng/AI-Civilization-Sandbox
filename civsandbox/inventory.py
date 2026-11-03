@@ -7,8 +7,9 @@ class ItemDefinition:
     hunger_reduction: int = 0
 
 
-# Extend this registry for later stages; no hunting/cooking items exist yet.
-ITEM_DEFINITIONS = {"berries": ItemDefinition("Berries", hunger_reduction=35)}
+# Raw chicken is an ingredient. Cooking and cooked food belong to Stage 3.
+ITEM_DEFINITIONS = {"berries": ItemDefinition("Berries", hunger_reduction=35),
+                    "raw_chicken": ItemDefinition("Raw chicken")}
 ITEM_NAMES = {key: definition.name for key, definition in ITEM_DEFINITIONS.items()}
 
 

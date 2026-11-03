@@ -35,6 +35,7 @@ class Resources:
     def __init__(self, world: World, *, capacity=5, replenish_interval=20):
         if type(capacity) is not int or capacity < 1 or type(replenish_interval) is not int or replenish_interval < 1:
             raise ValueError("Resource capacity and interval must be positive integers")
+        self.wildlife = None
         self.tick = 0
         self.capacity = capacity
         self.replenish_interval = replenish_interval

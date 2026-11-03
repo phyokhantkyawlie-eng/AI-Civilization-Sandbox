@@ -1,7 +1,9 @@
 """Gameplay timers use fixed simulation ticks, never wall-clock sleeps."""
 from dataclasses import dataclass
 from .survival import SurvivalRules
-from .actions import ActionType, SOCIAL_ACTIONS, validate, execute
+from .occupancy import Occupancy
+from .wildlife import distance
+from .actions import Action, ActionType, SOCIAL_ACTIONS, validate, execute
 
 
 @dataclass(frozen=True)
@@ -42,9 +44,11 @@ class InProgress:
 
 
 class ActionProgress:
-    def __init__(self, timing, social, survival=None):
+    def __init__(self, timing, social, survival=None, occupancy=None):
         self.timing, self.social = timing, social
         self.survival = survival or SurvivalRules()
+        self.occupancy = occupancy or Occupancy()
+        self.wildlife = None
         self.duration_ticks = 0
         self.jobs = {}
         self.locks = {}
@@ -87,6 +91,8 @@ class ActionProgress:
         self.duration_ticks = 0
         job = self.jobs.get(actor.id)
         if job:
+            if job.action.kind == ActionType.HUNT:
+                return self.advance_hunt(job, actor, world, resources, tick)
             self.duration_ticks = job.duration_ticks
             self.sources[actor.id] = job.source
             if tick < job.finish_tick:
@@ -110,6 +116,15 @@ class ActionProgress:
             return True
         if not validate(action, actor, world, resources, self.social):
             return False
+        if action.kind == ActionType.HUNT:
+            self.wildlife = resources.wildlife
+            self.wildlife.begin(actor, action.target)
+            duration = self.duration_ticks = self.wildlife.settings.chase_ticks
+            self.jobs[actor.id] = InProgress(action, tick+duration, source, (actor.id,), duration)
+            self.locks[actor.id] = actor.id
+            actor.current_action = "HUNT"
+            self.started = True
+            return True
         duration = self.duration_ticks = self.duration_for(action, actor)
         if duration == 0:
             self.completed = execute(action, actor, world, resources, tick, self.social)
@@ -127,8 +142,65 @@ class ActionProgress:
         self.started = True
         return True
 
+    def advance_hunt(self, job, actor, world, resources, tick):
+        wildlife = self.wildlife
+        pursuit = wildlife.pursuits.get(actor.id)
+        self.sources[actor.id] = job.source
+        self.duration_ticks = job.duration_ticks
+        reason = None
+        if pursuit is None or tick >= pursuit.deadline:
+            reason = "pursuit timed out"
+        elif not validate(job.action, actor, world, resources, self.social):
+            reason = "target or hunter no longer eligible"
+        elif actor.energy <= max(self.survival.rest_energy, wildlife.settings.minimum_energy):
+            reason = "rest needed"
+        elif actor.food and actor.hunger >= 30:
+            reason = "carried berries take priority"
+        elif (pursuit.steps >= wildlife.settings.chase_steps
+              and distance(actor.position, wildlife.chickens[job.action.target].position) > 1):
+            reason = "pursuit distance limit"
+        if reason:
+            wildlife.abort(actor.id, reason)
+            self.release(actor.id)
+            actor.current_action, actor.goal = "WAIT", None
+            return True  # an ordinary failed pursuit, not an invalid world mutation
+        chicken = wildlife.chickens[job.action.target]
+        if distance(actor.position, chicken.position) <= 1:
+            if not pursuit.catch_ready_tick:
+                pursuit.catch_ready_tick = tick+wildlife.settings.catch_ticks
+            dx, dy = chicken.position[0]-actor.position[0], chicken.position[1]-actor.position[1]
+            actor.facing = ("right" if dx >= 0 else "left") if dx else ("down" if dy >= 0 else "up")
+            if tick >= pursuit.catch_ready_tick:
+                self.completed = execute(job.action, actor, world, resources, tick, self.social)
+                self.release(actor.id)
+                actor.goal = None
+                self.duration_ticks = 0
+                return self.completed
+        else:
+            pursuit.catch_ready_tick = 0
+            routes = [(len(route), p) for p in world.neighbors(chicken.position)
+                      if (route := world.path(actor.position, p))]
+            if not routes:
+                wildlife.abort(actor.id, "target unreachable")
+                self.release(actor.id)
+                actor.current_action, actor.goal = "WAIT", None
+                return True
+            slowed = actor.hunger >= self.survival.inefficient_hunger and tick % self.survival.hunger_slowdown
+            if not slowed:
+                extra = [c.position for c in wildlife.living()]
+                step = self.occupancy.next_step(actor, min(routes)[1], world,
+                                                self.social.agents.values(), extra)
+                if step is not None:
+                    move = Action(ActionType.MOVE_TO, step)
+                    if execute(move, actor, world, resources, tick, self.social):
+                        pursuit.steps += 1
+        actor.current_action = "HUNT"
+        return True
+
     def release(self, actor_id):
         job = self.jobs.pop(actor_id)
+        if job.action.kind == ActionType.HUNT and self.wildlife:
+            self.wildlife.abort(actor_id, "activity cancelled")
         for member in job.participants:
             self.locks.pop(member, None)
 

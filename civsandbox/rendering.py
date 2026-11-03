@@ -36,6 +36,7 @@ class Renderer:
         self.animation_fps = animation_fps
         self.characters = {}
         self.character_rects = {}
+        self.chicken_rects = {}
         self.feedback = Feedback()
         self.ground_cache = {}
         self.lighting_cache = {}
@@ -96,15 +97,23 @@ class Renderer:
                 foot = (foot[0]+round((index-(len(companions)-1)/2)*12), foot[1])
             self.draw_feet[agent.id] = foot
             layers.append((foot[1], 1, (agent, foot)))
+        self.chicken_rects.clear()
+        for chicken in simulation.wildlife.living():
+            foot = (ORIGIN[0]+chicken.position[0]*TILE_SIZE+18,
+                    ORIGIN[1]+chicken.position[1]*TILE_SIZE+31)
+            layers.append((foot[1], 2, (chicken, foot)))
         # Ground first, then terrain/characters sorted by feet so foreground objects occlude correctly.
         self.character_rects.clear()
         for _, kind, item in sorted(layers, key=lambda layer: (layer[0], layer[1])):
             if kind == 0:
                 tile, rect, position = item
                 self.draw_feature(tile, rect, simulation, position)
-            else:
+            elif kind == 1:
                 agent, foot = item
                 self.draw_character(agent, foot)
+            else:
+                chicken, foot = item
+                self.draw_chicken(chicken, foot, simulation.tick)
         # Labels are drawn above foreground terrain so every villager stays identifiable.
         for agent in simulation.agents:
             rect = self.character_rects[agent.id]
@@ -282,7 +291,7 @@ class Renderer:
                 self.text("Empty", (906, 397), (193, 205, 181))
             goal = actor.goal.purpose.title() if actor.goal else "Reevaluating"
             self.screen.blit(self.small.render(f"Goal: {goal}", True, (193, 205, 181)), (906, 350))
-            self.screen.blit(self.small.render(actor.personality_name, True, (193, 205, 181)), (906, 435))
+            self.screen.blit(self.small.render(actor.personality_name, True, (193, 205, 181)), (906, 451))
         elif self.selected_bush is not None:
             bush = simulation.resources.bushes[self.selected_bush]
             self.text("Berry bush", (906, 172), title=True)
@@ -300,7 +309,7 @@ class Renderer:
             self.screen.blit(self.small.render("Click a person or berry bush", True, (193, 205, 181)), (906, 207))
         self.text("Village news", (906, 480))
         interesting = [e for e in reversed(simulation.events) if e.get("social") or (
-            e.get("executed") and e["action"] in ("GATHER", "EAT"))][:4]
+            e.get("executed") and e["action"] in ("GATHER", "EAT", "HUNT")) or e["action"] == "HUNT_FAILED"][:4]
         names = {a.id: a.name for a in simulation.agents}
         for index, event in enumerate(interesting):
             if event.get("social"):
@@ -308,6 +317,11 @@ class Renderer:
                 verb = {"pending": "asked", "shared one food": "shared with", "refused": "declined",
                         "greeted": "greeted", "expired": "waited for"}.get(event.get("result"), "met")
                 text = f"{event['agent']} {verb} {target}"
+            elif event["action"] == "HUNT_FAILED":
+                name = names.get(event.get("actor_id"), "Villager")
+                text = f"{name}'s hunt ended"
+            elif event["action"] == "HUNT":
+                text = f"{event['agent']} collected raw chicken"
             elif event["action"] == "EAT":
                 text = f"{event['agent']} ate berries"
             else:
@@ -372,6 +386,29 @@ class Renderer:
                 self.screen.blit(self.small.render(line, True, (45, 54, 48)),
                                  (card.x+8, card.y+6+i*17))
         self.feedback_rects = occupied
+
+    def draw_chicken(self, chicken, foot, tick):
+        x, y = foot
+        pecking = chicken.activity == "pecking"
+        bob = (tick//2) % 2 if chicken.moving else 0
+        head_x = x+chicken.facing*8
+        head_y = y-8 if pecking else y-17-bob
+        pygame.draw.ellipse(self.screen, (54, 72, 49), (x-10, y-3, 20, 6))
+        pygame.draw.line(self.screen, (221, 159, 62), (x-3,y-4), (x-4,y+1-bob), 2)
+        pygame.draw.line(self.screen, (221, 159, 62), (x+3,y-4), (x+5,y+1+bob), 2)
+        pygame.draw.ellipse(self.screen, (230, 223, 194), (x-10,y-18-bob,20,15))
+        pygame.draw.ellipse(self.screen, (205, 193, 159), (x-6,y-14-bob,10,8), 1)
+        pygame.draw.circle(self.screen, (246, 238, 205), (head_x,head_y), 6)
+        pygame.draw.circle(self.screen, (185, 64, 53), (head_x-2,head_y-6), 3)
+        pygame.draw.circle(self.screen, (38, 43, 41), (head_x+chicken.facing*2,head_y-1), 1)
+        pygame.draw.polygon(self.screen, (226, 166, 53), [(head_x+chicken.facing*5,head_y),
+                            (head_x+chicken.facing*10,head_y+2), (head_x+chicken.facing*5,head_y+3)])
+        if chicken.state == "FLEE":
+            self.screen.blit(self.small.render("!", True, (251, 206, 115)), (x-3,y-35))
+            pygame.draw.line(self.screen, (208, 199, 161), (x-chicken.facing*16,y-10), (x-chicken.facing*12,y-10))
+        elif pecking:
+            pygame.draw.circle(self.screen, (199, 167, 99), (head_x+chicken.facing*8,y), 1)
+        self.chicken_rects[chicken.id] = pygame.Rect(x-15,y-28,30,32)
 
     def draw_feature(self, tile, rect, simulation, position):
         cx, cy = rect.center

@@ -3,11 +3,13 @@ from dataclasses import asdict
 
 from .actions import Action, ActionType, validate
 from .world import Tile, World
+from .wildlife import VisibleWildlife
 
 
 class VisibleResources:
-    def __init__(self, stocks):
+    def __init__(self, stocks, wildlife=None):
         self._stocks = stocks
+        self.wildlife = wildlife
 
     def stocks(self):
         return self._stocks.copy()
@@ -26,11 +28,14 @@ def observe(agent, world, resources, agents=(), radius=4, social=None):
                                    for tx, tile in enumerate(row))
                              for ty, row in enumerate(world.tiles)))
     local_resources = VisibleResources({p: food for p, food in resources.stocks().items()
-                                        if p in visible})
+                                        if p in visible},
+                                      VisibleWildlife(resources.wildlife, visible) if getattr(resources, "wildlife", None) else None)
     candidates = [Action(kind) for kind in (ActionType.EAT, ActionType.REST, ActionType.WAIT)]
     candidates += [Action(ActionType.MOVE_TO, p) for p in local_world.reachable(agent.position)
                    if p != agent.position]
     candidates += [Action(ActionType.GATHER, p) for p in local_resources.stocks()]
+    if local_resources.wildlife:
+        candidates += [Action(ActionType.HUNT, key) for key in local_resources.wildlife.chickens]
     if social:
         for other in agents:
             if other.id != agent.id and other.position in visible:
@@ -43,6 +48,7 @@ def observe(agent, world, resources, agents=(), radius=4, social=None):
     context = {
         "agent": {"id": agent.id, "name": agent.name, "personality_name": agent.personality_name, "personality": agent.personality.copy(),
                   "hunger": agent.hunger, "energy": agent.energy, "food": agent.food,
+                  "inventory": agent.inventory.items.copy(),
                   "position": list(agent.position),
                   "goal": asdict(agent.goal) if agent.goal else None},
         "visibility": "Manhattan radius 4; no vision occlusion; unknown tiles unavailable",
@@ -54,6 +60,8 @@ def observe(agent, world, resources, agents=(), radius=4, social=None):
                   for tx, ty in sorted(visible)],
         "resources": [{"position": list(p), "food": food}
                       for p, food in local_resources.stocks().items()],
+        "nearby_chickens": [{"id": c.id, "position": list(c.position), "state": c.state.value}
+                            for c in local_resources.wildlife.chickens.values()] if local_resources.wildlife else [],
         "valid_actions": [action_dict(a) for a in choices],
     }
     if social:

@@ -51,7 +51,7 @@ def parse_decision(raw: str, secret="") -> Action:
     request_id = data.get("request_id")
     if request_id is not None and (not isinstance(request_id, str) or not request_id):
         raise ValueError("Invalid request ID")
-    if kind in SOCIAL_ACTIONS:
+    if kind in SOCIAL_ACTIONS or kind == ActionType.HUNT:
         if not isinstance(target, str) or not target or len(target) > 80:
             raise ValueError("Invalid NPC target")
         if (kind in (ActionType.SHARE_FOOD, ActionType.REFUSE_REQUEST)) != (request_id is not None):

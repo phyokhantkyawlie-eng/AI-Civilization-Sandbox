@@ -1,4 +1,4 @@
-# Development guide — offline survival Stage 1
+# Development guide — offline wildlife Stage 2
 
 ## Direction and launch
 
@@ -27,9 +27,9 @@ For a new environment, use Python 3.12 and install `requirements.txt` from avail
 | Social | `social.py`: addressed expiring requests, nearby validation, transfers/refusals, directed trust consequences and bounded memory. Read history only through memory-enabled accessors. |
 | Presentation | `rendering.py`, `animation.py`, `sprites.py`, `feedback.py`, `ui_state.py`: cached art, render-only interpolation, inspector, controls and event-driven notices. Visual coordinates never update logical positions. |
 | Persistence/evaluation | Social JSON saves on clean exit; invalid history is preserved. Experiments use fresh providers, RNGs and no normal save path. `results.py` reads genuine exports and makes charts. |
-| Wildlife / player controller | Not implemented. Future responsibilities, not new modules for Stage 1. |
+| Wildlife / player controller | `wildlife.py`: chicken FSM, finite population, claims/deadlines. Updated once by Simulation in the same world. Human controller remains future work. |
 
-All providers return the existing frozen Action model: MOVE_TO, GATHER, EAT, REST, WAIT, REQUEST_FOOD, SHARE_FOOD, REFUSE_REQUEST, TALK. Do not bypass validation for a new decision source. Invalid actions must have no effects and receive a safe WAIT fallback. Decision explanations are public summaries, never unexecuted dialogue.
+All providers return the existing frozen Action model: MOVE_TO, GATHER, EAT, REST, WAIT, REQUEST_FOOD, SHARE_FOOD, REFUSE_REQUEST, TALK, HUNT. Do not bypass validation for a new decision source. Invalid actions must have no effects and receive a safe WAIT fallback. Decision explanations are public summaries, never unexecuted dialogue.
 
 ## Verified existing behavior
 
@@ -43,7 +43,7 @@ All providers return the existing frozen Action model: MOVE_TO, GATHER, EAT, RES
 
 ## Gaps to preserve for later survival stages
 
-Temporary incapacitation and timed recovery now exist, but no death/health model does, so mortality/survival metrics remain unavailable. Berries are the only usable item; there is no cooking, wildlife or human decision controller. Social history persists, but physical world/inventory state is not a full game save. Rules use full-map resource knowledge, unlike the local structured adapter context. The current needs policy is priority based with a weighted social utility, not a general utility scorer across every action. Goal planning is limited to existing food/exploration/social routes. Corridor yielding deliberately permits temporary tile overlap after three blocked ticks. Resource/social/event histories are bounded audit windows, not unlimited archives. These remain limitations after Stage 1.
+Temporary incapacitation and timed recovery now exist, but no death/health model does, so mortality/survival metrics remain unavailable. Berries are the only edible item; raw chicken is a bounded ingredient reserve. Cooking and a human decision controller remain future work. Social history persists, but physical world/inventory state is not a full game save. Rules use full-map resource knowledge, unlike the local structured adapter context. The current needs policy is priority based with a weighted social utility, not a general utility scorer across every action. Goal planning is limited to existing food/exploration/social routes. Corridor yielding deliberately permits temporary tile overlap after three blocked ticks. Resource/social/event histories are bounded audit windows, not unlimited archives. These remain limitations after Stage 1.
 
 ## Verification and future changes
 
@@ -76,3 +76,15 @@ The scheduler now times rest, freezes duration at activity acceptance, and lengt
 Incapacitation cancels unfinished reservations and pending requests with a recorded cancellation, without transferring food or applying invented trust changes. Forced recovery uses validated REST actions. A minimum recovery deadline plus positive energy permits waking; starvation grace then allows food seeking. Continued scarcity may cause another temporary recovery, but there is no permanent unconscious state or death. Pause freezes every deadline. Experiments serialize clock, survival and timing configuration to distinguish this revision from historical results.
 
 Stage 1 verification: 188 passed, 1 skipped, 0 failures; two 4,800-tick seeded offline runs conserved food. See STAGE1_SURVIVAL.md for observed runs and executed checks. Git commit `34bec30` preserves the complete pre-Stage-1 offline baseline. Private `.env`, normal histories and original artwork remain untouched.
+
+## Stage 2 wildlife conventions
+
+`Simulation.wildlife` and `Resources.wildlife` reference the same manager, not a second simulation. Chickens use the existing World and an isolated seed-derived wildlife RNG; no rendering frame or spawn callback chooses NPC goals. Never reuse a defeated chicken ID. Initial spawning and replacements select reachable free tiles; replacement targets the configured initial population, bounded by the maximum. A failed spawn retries after the same configured delay. Dead inspection records are bounded to 16; events drain into the normal bounded simulation log.
+
+HUNT targets a chicken ID, not a coordinate or NPC. Shared validation distinguishes offered high-level eligibility from final timed/proximity validation. The existing ActionProgress holds the actor reservation, maintains a bounded Pursuit, replans through the existing BFS/Occupancy and moves via the existing MOVE_TO executor. Chicken movement can break the catch window. Completion alone transfers one raw item and marks the chicken dead; claims, deadlines, cooldowns and cancellation prevent duplicated rewards. Generic ACTIVITY events identify accepted pursuits; one completed HUNT event records the reward, and one HUNT_FAILED event records each abandoned attempt. Observation views offer visible IDs only and cannot execute final hunts.
+
+Conditional rule utility combines hunger, curiosity, risk and travel cost. It never reads spawn events, character names, social histories when disabled, or hidden target positions outside the six-tile hunting perception range. Existing berry planning retains its documented full-map knowledge. A reachable nearby berry approach (within 6 + floor(4×risk) steps) prevents hunting. Candidate travel is bounded by floor(7 − 4×risk) steps; score must be at least .35. A five-second decision-check interval and 40-second post-attempt cooldown bound reconsideration. No new character scripts exist.
+
+Raw chicken uses the existing Inventory and item registry with zero hunger reduction. Agent.food remains exclusively berries; neither eating nor social food sharing consumes raw meat. One raw reserve prevents pointless repeated hunting before Stage 3 cooking exists. Do not invent cooking, illness or raw-meat hunger benefits in Stage 2. Physical wildlife/inventory state is not persisted by the existing social-history save.
+
+Population and pursuit configuration is recorded in new experiment exports, and initial fingerprints now include chickens and wildlife RNG state. See STAGE2_WILDLIFE.md for actual checks and frequencies. Pre-Stage-2 recovery point: Git commit `de99831`. Native interactive QA remains manual; SDL renders and automated movement/asset checks are executed.

@@ -21,6 +21,7 @@ class RuleBasedDecisionProvider:
         self.clock = DayClock()
         self.survival = SurvivalRules()
         self.tick = 0
+        self.hunt_checks = {}
 
     def bind_social(self, social):
         self.social = social
@@ -62,6 +63,10 @@ class RuleBasedDecisionProvider:
         if social_action:
             return social_action
 
+        hunt = self.hunting_choice(agent, world, resources)
+        if hunt:
+            return hunt
+
         # Preserve a food goal until stocked, depleted, or unreachable.
         needs_food = agent.food < (2 if self.clock.at(self.tick).daylight else 1)
         if needs_food:
@@ -93,6 +98,43 @@ class RuleBasedDecisionProvider:
             return Action(ActionType.MOVE_TO, agent.goal.target)
         agent.goal = None
         return Action(ActionType.WAIT)
+
+    def hunting_choice(self, agent, world, resources):
+        wildlife = getattr(resources, "wildlife", None)
+        if (wildlife is None or agent.food or agent.inventory.quantity("raw_chicken")
+                or agent.hunger < max(65, self.survival.hungry)
+                or agent.energy < max(40, wildlife.settings.minimum_energy+12)
+                or agent.inventory.used >= agent.inventory.capacity
+                or self.tick < self.hunt_checks.get(agent.id, 0)):
+            return None
+        self.hunt_checks[agent.id] = self.tick+20
+        risk = agent.personality.get("risk_aversion", .5)
+        # A reachable berry patch is preferable to a risky nearby pursuit.
+        for bush, stock in resources.stocks().items():
+            if stock and any(p == agent.position or (route := world.path(agent.position, p))
+                             and len(route) <= 6+int(4*risk) for p in world.neighbors(bush)):
+                return None
+        candidates = []
+        for chicken in wildlife.chickens.values():
+            if (not chicken.alive or sum(abs(a-b) for a,b in zip(agent.position, chicken.position)) > 6
+                    or not wildlife.can_hunt(agent, chicken.id, world)):
+                continue
+            paths = [len(route) for p in world.neighbors(chicken.position)
+                     if (route := world.path(agent.position, p))]
+            # Adjacent targets have no travel cost.
+            steps = 0 if agent.position in world.neighbors(chicken.position) else min(paths, default=999)
+            if steps > int(7-4*risk):
+                continue
+            score = ((agent.hunger-55)/45*.5 + agent.personality.get("curiosity", .5)*.2
+                     + (1-risk)*.3 - steps*.06 - risk*.2)
+            if score >= .35:
+                candidates.append((-score, steps, chicken.id))
+        if candidates:
+            target = min(candidates)[2]
+            agent.goal = Goal("hunt", target)
+            return Action(ActionType.HUNT, target,
+                          "Hungry, no carried berries, scarce reachable berries; short pursuit for one raw supply.")
+        return None
 
     @staticmethod
     def food_action(agent, bush, world, resources):

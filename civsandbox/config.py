@@ -6,6 +6,7 @@ import math
 from .pacing import ActionTiming
 from .daynight import DayClock
 from .survival import SurvivalRules
+from .wildlife import WildlifeSettings
 
 from dotenv import dotenv_values
 
@@ -20,6 +21,7 @@ class Settings:
     timeout_seconds: float = 8.0
     memory_enabled: bool = True
     memory_path: str = "data/social_memory.json"
+    wildlife: WildlifeSettings = field(default_factory=WildlifeSettings)
     day_clock: DayClock = field(default_factory=DayClock)
     survival: SurvivalRules = field(default_factory=SurvivalRules)
     action_timing: ActionTiming = field(default_factory=ActionTiming)
@@ -66,7 +68,19 @@ class Settings:
             recovery_ticks=seconds_to_ticks("RECOVERY_SECONDS", 3),
             grace_ticks=seconds_to_ticks("RECOVERY_GRACE_SECONDS", 30),
             hunger_slowdown=int(values.get("HUNGER_SLOWDOWN", 2)))
-        return cls(day_clock=clock, survival=survival, action_timing=ActionTiming(**timings), memory_enabled=memory_flag == "true",
+        wildlife = WildlifeSettings(
+            starting_population=int(values.get("CHICKEN_STARTING_POPULATION", 2)),
+            maximum_population=int(values.get("CHICKEN_MAX_POPULATION", 4)),
+            respawn_ticks=seconds_to_ticks("CHICKEN_RESPAWN_SECONDS", 60),
+            movement_ticks=seconds_to_ticks("CHICKEN_MOVE_SECONDS", 3),
+            flee_ticks=seconds_to_ticks("CHICKEN_FLEE_SECONDS", 1),
+            threat_radius=int(values.get("CHICKEN_THREAT_RADIUS", 2)),
+            chase_ticks=seconds_to_ticks("HUNT_TIMEOUT_SECONDS", 20),
+            chase_steps=int(values.get("HUNT_MAX_STEPS", 12)),
+            catch_ticks=seconds_to_ticks("HUNT_CATCH_SECONDS", 2),
+            cooldown_ticks=seconds_to_ticks("HUNT_COOLDOWN_SECONDS", 40),
+            minimum_energy=int(values.get("HUNT_MIN_ENERGY", 12)))
+        return cls(wildlife=wildlife, day_clock=clock, survival=survival, action_timing=ActionTiming(**timings), memory_enabled=memory_flag == "true",
                    memory_path=values.get("MEMORY_PATH") or "data/social_memory.json",
                    provider=selected, max_calls=0,
                    cooldown_ticks=int(values.get("AI_DECISION_COOLDOWN_TICKS", "40")))

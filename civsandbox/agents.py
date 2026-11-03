@@ -12,7 +12,7 @@ from .inventory import Inventory
 @dataclass(frozen=True)
 class Goal:
     purpose: str
-    target: Position
+    target: Position | str
 
 
 @dataclass(init=False)

@@ -27,7 +27,8 @@ def rate(numerator, denominator):
 def initial_fingerprint(sim):
     """Hash physical/RNG state, excluding the experimental treatment flag."""
     state = {"world": [[t.value for t in row] for row in sim.world.tiles],
-             "agents": sim.snapshot()["agents"], "resources": sim.resources.stocks().__repr__(),
+             "agents": sim.snapshot()["agents"], "chickens": sim.snapshot()["chickens"],
+             "wildlife_rng": repr(sim.wildlife.rng.getstate()), "resources": sim.resources.stocks().__repr__(),
              "rng": repr(sim.rng.getstate())}
     return hashlib.sha256(json.dumps(state, sort_keys=True).encode()).hexdigest()
 
@@ -56,7 +57,7 @@ def metrics(sim, hunger_sum, samples, fallback_count, elapsed):
 
 def run_trial(settings, seed, ticks, memory, scenario="food_shortage", tick_seconds=0.25):
     provider = create_provider(replace(settings, memory_enabled=memory))
-    sim = Simulation(seed, provider, memory_enabled=memory, memory_path=None, scenario=scenario, event_limit=max(4096, ticks*32), decision_trace_limit=100, timing=settings.action_timing, day_clock=settings.day_clock, survival=settings.survival)
+    sim = Simulation(seed, provider, memory_enabled=memory, memory_path=None, scenario=scenario, event_limit=max(4096, ticks*32), decision_trace_limit=100, timing=settings.action_timing, day_clock=settings.day_clock, survival=settings.survival, wildlife_settings=settings.wildlife)
     row = {"seed": seed, "condition": "MEMORY_ON" if memory else "MEMORY_OFF",
            "provider": settings.provider, "model": safe_text(settings.model, settings.api_key) if settings.provider == "gemini" else None,
            "status": "running", "initial_state_sha256": initial_fingerprint(sim)}
@@ -147,7 +148,7 @@ def export(output, config, rows):
 
 def run_batch(settings, runs, ticks, seed, output, scenario="food_shortage", tick_seconds=.25):
     output.mkdir(parents=True, exist_ok=False)
-    config = {"day_clock": asdict(settings.day_clock), "survival": asdict(settings.survival), "action_timing": asdict(settings.action_timing), "provider": settings.provider, "model": safe_text(settings.model, settings.api_key) if settings.provider == "gemini" else None,
+    config = {"wildlife": asdict(settings.wildlife), "day_clock": asdict(settings.day_clock), "survival": asdict(settings.survival), "action_timing": asdict(settings.action_timing), "provider": settings.provider, "model": safe_text(settings.model, settings.api_key) if settings.provider == "gemini" else None,
               "runs": runs, "ticks": ticks, "seeds": list(range(seed, seed+runs)),
               "action_timing_ticks": settings.action_timing.__dict__, "scenario": scenario, "max_ai_calls_per_trial": settings.max_calls,
               "cooldown_ticks": settings.cooldown_ticks, "timeout_seconds": settings.timeout_seconds,

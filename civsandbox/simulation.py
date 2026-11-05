@@ -22,7 +22,7 @@ from .pacing import ActionProgress, ActionTiming
 
 class Simulation:
     def __init__(self, seed: int = 42, decision_provider: DecisionProvider | None = None,
-                 memory_enabled: bool = True, memory_path=None, scenario="default", event_limit=8192, decision_trace_limit=0, timing=None, day_clock=None, survival=None, wildlife_settings=None):
+                 memory_enabled: bool = True, memory_path=None, scenario="default", event_limit=8192, decision_trace_limit=0, timing=None, day_clock=None, survival=None, wildlife_settings=None, social_settings=None):
         if scenario not in ("default", "food_shortage"):
             raise ValueError("Unknown scenario")
         self.clock = day_clock or DayClock()
@@ -37,7 +37,7 @@ class Simulation:
         for agent, (label, traits) in zip(self.agents, PERSONALITIES):
             agent.personality_name = label
             agent.personality = traits.copy()
-        self.social = SocialSystem(self.agents, memory_enabled, memory_path)
+        self.social = SocialSystem(self.agents, memory_enabled, memory_path, seed, social_settings)
         self.occupancy = Occupancy()
         self.progress = ActionProgress(timing or ActionTiming(), self.social, self.survival, self.occupancy)
         self.social.pacing = self.progress
@@ -134,7 +134,7 @@ class Simulation:
                                 reasoning="Temporary recovery; resting until able to act.")
             elif active_job:
                 action = active_job.action
-            elif self.progress.held(agent):
+            elif self.progress.held(agent) and not self.social.needs_response(agent):
                 action = Action(ActionType.WAIT)
             else:
                 action = self.decision_provider.decide(agent, self.world, self.resources, self.rng)
@@ -174,7 +174,7 @@ class Simulation:
             # Record all executed actions; the UI filters repeated movement/wait.
             self.events.append({"tick": self.tick, "agent": agent.name,
                                 "action": ("ACTIVITY" if agent.current_action in ("GATHER", "HUNT", "COOK") and not self.progress.completed else agent.current_action),
-                                "activity_action": agent.current_action, "target": action.target, "item": food_item,
+                                "activity_action": agent.current_action, "session_id": self.progress.session_id, "target": action.target, "item": food_item,
                                 "actor_id": agent.id, "executed": self.progress.completed,
                                 "accepted_start": self.progress.started,
                                 "duration_seconds": self.progress.duration_ticks*.25,
@@ -240,7 +240,8 @@ class Simulation:
             self.decision_provider.close()
 
     def snapshot(self) -> dict:
-        return {"cooking_station": asdict(self.cooking_station), "chickens": [asdict(c) for c in self.wildlife.chickens.values()],
+        return {"interaction_sessions": [asdict(s) for s in self.social.sessions.values()],
+                "cooking_station": asdict(self.cooking_station), "chickens": [asdict(c) for c in self.wildlife.chickens.values()],
                 "wildlife_respawns": self.wildlife.respawns.copy(),
                 "hunt_cooldowns": self.wildlife.cooldowns.copy(),
                 "pursuits": {key: asdict(p) for key,p in self.wildlife.pursuits.items()},

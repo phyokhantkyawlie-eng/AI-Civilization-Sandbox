@@ -28,7 +28,7 @@ def main():
     memory_path = Path(settings.memory_path)
     if not memory_path.is_absolute():
         memory_path = Path(__file__).resolve().parent.parent / memory_path
-    simulation = Simulation(args.seed, create_provider(settings), settings.memory_enabled, memory_path, scenario=args.scenario, timing=settings.action_timing, day_clock=settings.day_clock, survival=settings.survival, wildlife_settings=settings.wildlife)
+    simulation = Simulation(args.seed, create_provider(settings), settings.memory_enabled, memory_path, scenario=args.scenario, timing=settings.action_timing, day_clock=settings.day_clock, survival=settings.survival, wildlife_settings=settings.wildlife, social_settings=settings.social)
     try:
         if args.headless:
             for _ in range(args.ticks):

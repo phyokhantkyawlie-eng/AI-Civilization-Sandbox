@@ -14,25 +14,25 @@ def event(number=1, **kwargs):
 
 def test_only_committed_actions_show_and_expire_without_replay():
     f = Feedback()
-    f.consume([dict(event_id=1, actor_id="npc-1", action="TALK")])
+    f.consume([dict(event_id=1, actor_id="npc-1", action="GATHER")])
     assert not f.notices
-    f.consume([event(2)])
-    assert "Rule-based template" in f.notices["npc-1"].speech
+    actual=event(2)
+    actual['action']='GATHER'
+    f.consume([actual])
+    assert f.notices['npc-1'].label=='Gathered food' and not f.notices['npc-1'].speech
     f.advance(3)
-    f.consume([event(2)])
+    f.consume([actual])
     assert not f.notices
 
 
-def test_actual_gemini_reason_is_attributed_and_reactions_are_event_based():
+def test_provider_reason_without_a_session_is_not_dialogue():
     f = Feedback()
     e = event(public_reason="There is spare food.")
-    e["decision_source"] = "gemini"
-    f.consume([e, dict(event_id=2, actor_id="npc-1", target_id="npc-2",
-                       action="REQUEST_FOOD", social=True, result="pending")])
-    assert f.notices["npc-1"].speech == "Gemini explanation: There is spare food."
-    assert f.notices[("npc-2", "reaction")].reaction == "Surprised"
-    assert f.sprite_state(f.state_for("npc-1", False)) == "idle"
-    assert f.sprite_state(f.state_for("npc-1", True)) == "walk"
+    e['decision_source']='gemini'
+    f.consume([e, dict(event_id=2,actor_id='npc-1',target_id='npc-2',
+                       action='REQUEST_FOOD',social=True,result='pending')])
+    assert not f.notices and not f.history
+    assert f.sprite_state('idle')=='idle' and f.sprite_state('walk')=='walk'
 
 
 def test_all_missing_animation_sets_use_idle():
@@ -63,9 +63,12 @@ def test_bubble_layout_stays_inside_map_and_avoids_overlap():
         r = Renderer()
         s.agents[0].position = s.agents[1].position = (0, 0)
         r.draw(s, __import__("civsandbox.simulation", fromlist=["FixedTicker"]).FixedTicker())
-        events = [event()]
+        first=event()
+        first["action"]="GATHER"
+        events = [first]
         e = event(2)
         e["actor_id"] = "npc-2"
+        e["action"] = "EAT"
         events.append(e)
         r.feedback.consume(events)
         r.draw_feedback()

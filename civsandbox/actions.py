@@ -20,6 +20,7 @@ class ActionType(str, Enum):
     SHARE_FOOD = "SHARE_FOOD"
     REFUSE_REQUEST = "REFUSE_REQUEST"
     TALK = "TALK"
+    OFFER_FOOD = "OFFER_FOOD"
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,7 @@ class Action:
 
 
 SOCIAL_ACTIONS = {ActionType.REQUEST_FOOD, ActionType.SHARE_FOOD,
-                  ActionType.REFUSE_REQUEST, ActionType.TALK}
+                  ActionType.REFUSE_REQUEST, ActionType.TALK, ActionType.OFFER_FOOD}
 
 
 def valid_position(target) -> bool:

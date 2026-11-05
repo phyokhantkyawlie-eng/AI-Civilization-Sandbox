@@ -1,4 +1,4 @@
-# Development guide — offline goal planning Stage 3
+# Development guide — offline social encounters Stage 4
 
 ## Direction and launch
 
@@ -29,7 +29,7 @@ For a new environment, use Python 3.12 and install `requirements.txt` from avail
 | Persistence/evaluation | Social JSON saves on clean exit; invalid history is preserved. Experiments use fresh providers, RNGs and no normal save path. `results.py` reads genuine exports and makes charts. |
 | Wildlife / player controller | `wildlife.py`: chicken FSM, finite population, claims/deadlines. Updated once by Simulation in the same world. Human controller remains future work. |
 
-All providers return the existing frozen Action model: MOVE_TO, GATHER, EAT, REST, WAIT, REQUEST_FOOD, SHARE_FOOD, REFUSE_REQUEST, TALK, HUNT, COOK. EAT optionally names an edible item; Agent.food remains the berries compatibility view. Do not bypass validation for a new decision source. Invalid actions must have no effects and receive a safe WAIT fallback. Decision explanations are public summaries, never unexecuted dialogue.
+All providers return the existing frozen Action model: MOVE_TO, GATHER, EAT, REST, WAIT, REQUEST_FOOD, SHARE_FOOD, REFUSE_REQUEST, TALK, OFFER_FOOD, HUNT, COOK. EAT optionally names an edible item; Agent.food remains the berries compatibility view. Do not bypass validation for a new decision source. Invalid actions must have no effects and receive a safe WAIT fallback. Decision explanations are public summaries, never unexecuted dialogue.
 
 ## Verified existing behavior
 
@@ -55,7 +55,7 @@ MEMORY_PATH=/tmp/civsandbox-stage0-check.json python -m civsandbox --headless --
 
 Use a previously unused temporary filename for a fresh run. For reproducible paired trials use the existing experiment runner, which isolates history automatically. Tests prohibit socket/DNS attempts, including caught failures; CLI regression subprocesses additionally prohibit Google SDK imports. SDK serialization tests use fake HTTP only and skip when the optional historical SDK is absent. The historical live test always skips.
 
-Automated SDL dummy tests exercise real frame loading, directions, interpolation, pause/resume, speed, inspection and shutdown. They do not establish human visual approval. Manual checklist: launch both scenarios, check four character colors and foot anchors, watch turns and corridor passing at .5×/1×/4×, pause mid-walk/activity and resume, inspect inventory/trust/memory, click a bush, and confirm dialogue appears only for actual exchanges and expires after simulation time advances.
+Automated SDL dummy tests exercise real frame loading, directions, interpolation, pause/resume, speed, inspection and shutdown. They do not establish human visual approval. Manual checklist: launch both scenarios, check four character colors and foot anchors, watch turns and corridor passing at .5×/1×/4×, pause mid-walk/activity and resume, inspect inventory/trust/memory, click a bush, and confirm accepted dialogue uses real reading time, freezes on pause and remains in conversation history after logical completion.
 
 ## Recovery and privacy
 
@@ -104,3 +104,13 @@ The existing experiment runner now exports actual gather/hunt/cook/meal/incapaci
 The pre-Stage-3 recovery point is Git commit `7609a00`. See STAGE3_COOKING_AI.md for measured verification, controls and known limitations.
 
 Stage 3 final verification after interruption: 251 passed, 1 skipped, no failures. Six isolated 4,800-tick trials conserved berries/raw/cooked items; a fresh main-project trial reproduced saved seed-7 metrics. Normal rule/mock headless launches were checked with networking and SDK imports blocked. Native interactive QA remains manual.
+
+## Stage 4 conversation conventions
+
+Extend SocialSystem rather than creating another interaction log. `dialogue.py` contains typed session/turn metadata, SocialSettings and small authored banks; SocialSystem alone owns lifecycle, physical eligibility, cooldowns, events, trust and memories. The provider may propose a selected social goal, but proposals produce no speech or food. ActionProgress validates acceptance and completion, holds/faces both actors, and releases jobs and soft session reservations on cancellation. All transfers still use the shared executor and Inventory.
+
+Only delivered DIALOGUE events from a real accepted session enter Feedback. Never turn WAIT timers, public decision explanations or rejected proposals into speech. Feedback has a 64-line pending presentation queue and 60-line history; renderer reading time is real seconds, logical sessions use fixed ticks, and pause freezes both. A completed/left session is readable in the panel instead of floating over moving characters. Headless execution never waits for presentation. Native visual QA remains manual.
+
+Use guarded `trust_for` and `relevant_memories` for choices and templates, including avoidance. Cooldowns/repetition are interaction pacing in both memory conditions; they do not expose historical trust. Relevant past help must come from an actual earlier transfer. Do not invent disagreement, apology or gratitude outcomes. New voluntary OFFER_FOOD transfers one existing berry and uses the same validation/capacity rules as responses.
+
+See STAGE4_CONVERSATIONS.md for settings, measured outcomes and limitations. The pre-Stage-4 recovery commit is `02ab707`; normal private saves and original art remain intact.

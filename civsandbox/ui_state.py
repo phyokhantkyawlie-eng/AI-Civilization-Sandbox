@@ -30,6 +30,12 @@ def activity(agent, simulation):
     if agent.goal and agent.goal.purpose == "rest":
         return "Night rest"
     names = {a.id: a.name for a in simulation.agents}
+    session = simulation.social.session_for(agent)
+    if session and simulation.social.waiting_partner(agent):
+        return "Waiting for "+names[session.initiator_id]
+    if session and simulation.social.engaged(agent):
+        peer = next(key for key in session.participants if key != agent.id)
+        return "Talking to "+names[peer]
     owner = simulation.progress.locks.get(agent.id)
     job = simulation.progress.jobs.get(owner)
     if job and len(job.participants) == 2:

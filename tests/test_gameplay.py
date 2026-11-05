@@ -70,11 +70,13 @@ def test_gather_is_delayed_and_revalidated_when_bush_depletes():
 def test_social_locks_face_each_other_and_cooldown():
     sim = Simulation(scenario="food_shortage", decision_provider=FixedAction(Action(ActionType.TALK, "npc-2")))
     a, b = sim.agents[:2]
+    a.hunger = b.hunger = 10
     sim.step()
     assert sim.progress.locks[a.id] == sim.progress.locks[b.id] == a.id
     assert (a.facing, b.facing) == ("right", "left")
     assert not a.memories
-    for _ in range(8):
+    finish = sim.progress.jobs[a.id].finish_tick
+    while sim.tick < finish:
         sim.step()
     greetings = [e for e in sim.events if e.get("social") and e["action"] == "TALK" and e.get("result") == "greeted"]
     assert len(greetings) == 1

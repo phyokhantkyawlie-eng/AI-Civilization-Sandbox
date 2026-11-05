@@ -4,7 +4,23 @@ CSC472 Artificial Intelligence final project for a two-student team. **Animated 
 
 
 
-## Current gameplay — Stage 3: cooking and offline goal planning
+## Current gameplay — Stage 4: natural social encounters
+
+NPCs now share bounded interaction sessions: approach → stop and face → take turns → commit a validated result → finish or cancel. Accepted offline authored lines reflect personality, needs, real inventory, guarded memories and actual outcomes. Decision explanations never become dialogue. Busy partners, conflicting conversations and urgent survival needs cancel or defer interactions safely.
+
+Voluntary berry offers, thanks after real help, nearby campfire company and temporary avoidance after a serious refusal extend the existing utility policy. Per-agent, per-pair, request and repetition cooldowns limit spam; urgent requests have a bounded retry path. Ordinary greetings have only a small trust effect; refusal severity reflects actual need and available berries.
+
+Press **C** for scrollable recent conversation history. **F3 → S** shows social sessions, transitions, cooldowns, trust changes and utility scores; **F3 → P** retains planner inspection. Speech requires an accepted nearby session. A separate nonblocking reading clock preserves at least three real seconds per short line at fast speed; completed exchanges remain readable in the conversation panel. Pause freezes both clocks.
+
+```bash
+python -m civsandbox --provider rule-based --scenario food_shortage --seed 8
+python -m pytest -q
+```
+
+Verification: **272 passed, 1 skipped**. Six genuine 2,400-tick shortage trials produced 22 completed sessions, 16 requests/refusals, two voluntary transfers and two thanks; zero requested shares or campfire conversations occurred in that pilot. No API was used. These are observed outcomes, not guarantees or evidence of a memory benefit. See [STAGE4_CONVERSATIONS.md](STAGE4_CONVERSATIONS.md) for settings, exact counts and manual visual checks. Earlier notes below describe their historical versions.
+
+## Goal-planning baseline — Stage 3 (historical)
+
 
 The local `RuleBasedDecisionProvider` now ranks explainable utility candidates and retains a bounded action queue. Goals include eating, gathering, hunting, cooking, resting, socializing, responding to requests, asking for food, waiting and exploration. Emergency survival priorities override optional activity. Personality, needs, nutrition, travel, daylight, station waiting and commitments influence selection; seeded randomness remains limited to exploration and social willingness.
 

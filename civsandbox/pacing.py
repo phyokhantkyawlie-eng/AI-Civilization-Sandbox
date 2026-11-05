@@ -25,7 +25,7 @@ class ActionTiming:
             raise ValueError("Action timing values must be nonnegative integers")
 
     def duration(self, action):
-        return {ActionType.COOK: self.cook_ticks, ActionType.REST: self.rest_ticks, ActionType.GATHER: self.gather_ticks, ActionType.EAT: self.eat_ticks,
+        return {ActionType.OFFER_FOOD: self.response_ticks, ActionType.COOK: self.cook_ticks, ActionType.REST: self.rest_ticks, ActionType.GATHER: self.gather_ticks, ActionType.EAT: self.eat_ticks,
                 ActionType.TALK: self.greeting_ticks, ActionType.REQUEST_FOOD: self.request_ticks,
                 ActionType.SHARE_FOOD: self.response_ticks,
                 ActionType.REFUSE_REQUEST: self.response_ticks}.get(action.kind, 0)
@@ -42,6 +42,7 @@ class InProgress:
     source: str
     participants: tuple[str, ...]
     duration_ticks: int
+    session_id: str | None = None
 
 
 class ActionProgress:
@@ -58,6 +59,7 @@ class ActionProgress:
         self.sources = {}
         self.started = False
         self.completed = False
+        self.session_id = None
 
     def duration_for(self, action, actor):
         multiplier = self.survival.hunger_slowdown if action.kind == ActionType.GATHER and actor.hunger >= self.survival.inefficient_hunger else 1
@@ -72,7 +74,8 @@ class ActionProgress:
         if any(self.locks.get(key, actor.id) != actor.id for key in (actor.id, action.target)):
             return False
         answering = action.kind in (ActionType.SHARE_FOOD, ActionType.REFUSE_REQUEST)
-        if not answering and self.social.tick < max(self.cooldowns.get(actor.id, 0), self.cooldowns.get(action.target, 0)):
+        emergency = action.kind == ActionType.REQUEST_FOOD and actor.hunger >= 85 and actor.food == 0
+        if not answering and not emergency and self.social.tick < max(self.cooldowns.get(actor.id, 0), self.cooldowns.get(action.target, 0)):
             return False
         # An addressed request reserves the conversation slot until answered/expired.
         for request in self.social.pending.values():
@@ -86,13 +89,15 @@ class ActionProgress:
         return any(r.requester_id == actor.id for r in self.social.active_requests(actor))
 
     def held(self, actor):
-        return actor.id in self.locks or self.waiting_for_response(actor)
+        return actor.id in self.locks or self.waiting_for_response(actor) or self.social.engaged(actor) or self.social.waiting_partner(actor)
 
     def execute(self, action, actor, world, resources, tick, source):
         self.started = self.completed = False
+        self.session_id = None
         self.duration_ticks = 0
         job = self.jobs.get(actor.id)
         if job:
+            self.session_id = job.session_id
             if job.action.kind == ActionType.HUNT:
                 return self.advance_hunt(job, actor, world, resources, tick)
             self.duration_ticks = job.duration_ticks
@@ -103,14 +108,14 @@ class ActionProgress:
             action = job.action
             # Keep reservations through final validation and execution.
             success = execute(action, actor, world, resources, tick, self.social)
-            self.release(actor.id)
+            self.release(actor.id, cancel_social=not success)
             self.completed = success
             if action.kind in SOCIAL_ACTIONS:
                 for member in job.participants:
-                    self.cooldowns[member] = self.social.tick+self.timing.social_cooldown_ticks
+                    self.cooldowns[member] = self.social.tick+self.social.settings.agent_cooldown_ticks
             return success
         self.sources[actor.id] = source
-        if self.held(actor):
+        if self.held(actor) and not (self.social.needs_response(actor) and action.kind in (ActionType.SHARE_FOOD,ActionType.REFUSE_REQUEST,ActionType.EAT,ActionType.REST)):
             actor.current_action = "WAIT"
             return True
         if self.social.active_requests(actor) and action.kind == ActionType.MOVE_TO:
@@ -127,7 +132,15 @@ class ActionProgress:
             actor.current_action = "HUNT"
             self.started = True
             return True
-        duration = self.duration_ticks = self.duration_for(action, actor)
+        duration = self.duration_for(action, actor)
+        session = None
+        if action.kind in SOCIAL_ACTIONS:
+            session, logical_duration = self.social.begin_session(action,actor,world,instant=duration==0)
+            if session is None:
+                return False
+            duration = max(duration,logical_duration)
+            self.session_id = session.id
+        self.duration_ticks = duration
         if action.kind == ActionType.COOK:
             self.cooking_station = resources.cooking_station
             self.cooking_station.reserve(actor, tick, duration)
@@ -135,7 +148,7 @@ class ActionProgress:
             self.completed = execute(action, actor, world, resources, tick, self.social)
             return self.completed
         participants = (actor.id, action.target) if action.kind in SOCIAL_ACTIONS else (actor.id,)
-        self.jobs[actor.id] = InProgress(action, tick+duration, source, participants, duration)
+        self.jobs[actor.id] = InProgress(action, tick+duration, source, participants, duration, session.id if session else None)
         for member in participants:
             self.locks[member] = actor.id
         if len(participants) == 2:
@@ -202,8 +215,10 @@ class ActionProgress:
         actor.current_action = "HUNT"
         return True
 
-    def release(self, actor_id):
+    def release(self, actor_id, cancel_social=True):
         job = self.jobs.pop(actor_id)
+        if job.session_id and cancel_social:
+            self.social.cancel_session(job.session_id,"activity interrupted")
         if job.action.kind == ActionType.COOK and self.cooking_station:
             self.cooking_station.release(actor_id)
         if job.action.kind == ActionType.HUNT and self.wildlife:

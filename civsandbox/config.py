@@ -7,6 +7,7 @@ from .pacing import ActionTiming
 from .daynight import DayClock
 from .survival import SurvivalRules
 from .wildlife import WildlifeSettings
+from .dialogue import SocialSettings
 
 from dotenv import dotenv_values
 
@@ -21,6 +22,7 @@ class Settings:
     timeout_seconds: float = 8.0
     memory_enabled: bool = True
     memory_path: str = "data/social_memory.json"
+    social: SocialSettings = field(default_factory=SocialSettings)
     wildlife: WildlifeSettings = field(default_factory=WildlifeSettings)
     day_clock: DayClock = field(default_factory=DayClock)
     survival: SurvivalRules = field(default_factory=SurvivalRules)
@@ -80,7 +82,17 @@ class Settings:
             catch_ticks=seconds_to_ticks("HUNT_CATCH_SECONDS", 2),
             cooldown_ticks=seconds_to_ticks("HUNT_COOLDOWN_SECONDS", 40),
             minimum_energy=int(values.get("HUNT_MIN_ENERGY", 12)))
-        return cls(wildlife=wildlife, day_clock=clock, survival=survival, action_timing=ActionTiming(**timings), memory_enabled=memory_flag == "true",
+        social = SocialSettings(
+            agent_cooldown_ticks=seconds_to_ticks('SOCIAL_AGENT_COOLDOWN_SECONDS',float(values.get('SOCIAL_COOLDOWN_SECONDS',10))),
+            pair_cooldown_ticks=seconds_to_ticks('SOCIAL_PAIR_COOLDOWN_SECONDS',24),
+            request_retry_ticks=seconds_to_ticks('SOCIAL_REQUEST_RETRY_SECONDS',20),
+            repeat_ticks=seconds_to_ticks('SOCIAL_REPEAT_SECONDS',40),
+            approach_timeout_ticks=seconds_to_ticks('SOCIAL_APPROACH_TIMEOUT_SECONDS',12),
+            response_timeout_ticks=seconds_to_ticks('SOCIAL_RESPONSE_TIMEOUT_SECONDS',16),
+            avoid_ticks=seconds_to_ticks('SOCIAL_AVOID_SECONDS',20),
+            minimum_line_seconds=float(values.get('DIALOGUE_MIN_SECONDS',3)),
+            characters_per_second=float(values.get('DIALOGUE_CHARACTERS_PER_SECOND',18)))
+        return cls(social=social, wildlife=wildlife, day_clock=clock, survival=survival, action_timing=ActionTiming(**timings), memory_enabled=memory_flag == "true",
                    memory_path=values.get("MEMORY_PATH") or "data/social_memory.json",
                    provider=selected, max_calls=0,
                    cooldown_ticks=int(values.get("AI_DECISION_COOLDOWN_TICKS", "40")))

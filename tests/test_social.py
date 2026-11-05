@@ -50,9 +50,9 @@ def test_request_share_conservation_and_directed_memories():
     assert execute(share, agents[1], world, resources, 1, social)
     assert (agents[0].food, agents[1].food) == (1, 2)
     assert sum(a.food for a in agents) == before
-    assert agents[0].trust["b"] == 12 and agents[1].trust["a"] == 2
+    assert agents[0].trust["b"] == 6 and agents[1].trust["a"] == 2
     assert agents[2].trust["a"] == agents[2].trust["b"] == 0
-    assert agents[0].memories[-1].trust_delta == 12
+    assert agents[0].memories[-1].trust_delta == 6
     assert agents[1].memories[-1].trust_delta == 2
     assert agents[0].memories[-1].actor_id == "b" and agents[0].memories[-1].target_id == "a"
     assert agents[0].memories[-1].tick == 1
@@ -66,8 +66,9 @@ def test_refusal_expiry_and_invalid_answer_events():
     request = request_food(agents, world, resources, social)
     refuse = Action(ActionType.REFUSE_REQUEST, "a", request_id=request.id)
     assert execute(refuse, agents[1], world, resources, 1, social)
-    assert agents[0].trust["b"] == -8 and agents[1].trust["a"] == 0
+    assert agents[0].trust["b"] == -2 and agents[1].trust["a"] == 0
     assert sum(a.food for a in agents) == 3
+    social.advance(social.tick + social.settings.request_retry_ticks)
     second = request_food(agents, world, resources, social)
     social.advance(second.expires_tick-1)
     assert validate(Action(ActionType.REFUSE_REQUEST, "a", request_id=second.id),
@@ -76,7 +77,7 @@ def test_refusal_expiry_and_invalid_answer_events():
     expired = Action(ActionType.SHARE_FOOD, "a", request_id=second.id)
     assert not execute(expired, agents[1], world, resources, social.tick, social)
     social.reject(expired, agents[1])
-    assert agents[0].trust["b"] == -10  # refusal -8, expiry -2; invalid attempt zero
+    assert agents[0].trust["b"] == -2  # proportionate refusal, expiry and invalid attempts do not punish trust
     assert any(e["result"] == "expired" for e in social.events)
     assert any(e["result"].startswith("failed:") for e in social.events)
 
@@ -126,7 +127,8 @@ def test_talk_trust_bounds_and_bounded_relevant_recall():
     assert len(social.relevant_memories(agents[0], {"b"})) == 6
     assert social.relevant_memories(agents[0], {"c"}) == []
     assert agents[0].memories[-1].trust_delta == 0  # actual clipped effect recorded
-    for _ in range(30):
+    for _ in range(100):
+        social.advance(social.tick + social.settings.request_retry_ticks)
         req = request_food(agents, world, resources, social)
         execute(Action(ActionType.REFUSE_REQUEST, "a", request_id=req.id),
                 agents[1], world, resources, social.tick, social)
@@ -284,7 +286,7 @@ def test_selected_mock_provider_drives_social_transfer_and_no_engine_script():
     sim.agents[1].food = 3
     sim.step()
     assert (sim.agents[0].food, sim.agents[1].food) == (1, 2)
-    assert sim.agents[0].trust["npc-2"] == 12
+    assert sim.agents[0].trust["npc-2"] == 6
     assert any(e.get("social") and e["action"] == "SHARE_FOOD" for e in sim.events)
     class WaitProvider:
         def decide(self, *args):

@@ -49,7 +49,13 @@ def metrics(sim, hunger_sum, samples, fallback_count, elapsed):
     meals=Counter(e.get("item") or "berries" for e in sim.events if e["action"]=="EAT" and e.get("executed"))
     rule=getattr(sim.decision_provider,"rule",sim.decision_provider)
     planner_stats=getattr(rule,"stats",{})
-    return {"gathering_actions":completed["GATHER"],
+    return {"completed_sessions":sum(e["action"]=="SESSION" and e.get("state")=="COMPLETED" for e in sim.events),
+            "canceled_sessions":sum(e["action"]=="SESSION" and e.get("state")=="CANCELED" for e in sim.events),
+            "dialogue_turns":sum(e["action"]=="DIALOGUE" for e in sim.events),
+            "thanks_turns":sum(e["action"]=="DIALOGUE" and e.get("purpose")=="thanks" for e in sim.events),
+            "campfire_conversations":sum(e["action"]=="SESSION" and e.get("state")=="COMPLETED" and e.get("purpose")=="campfire" for e in sim.events),
+            "voluntary_food_transfers":sum(bool(e.get("social")) and e.get("result")=="offered one food" for e in sim.events),
+            "gathering_actions":completed["GATHER"],
             "hunting_attempts":sum(e.get("activity_action")=="HUNT" and bool(e.get("accepted_start")) for e in sim.events),
             "hunting_successes":completed["HUNT"], "cooking_completions":completed["COOK"],
             "meals_consumed":dict(meals),
@@ -70,7 +76,7 @@ def metrics(sim, hunger_sum, samples, fallback_count, elapsed):
 
 def run_trial(settings, seed, ticks, memory, scenario="food_shortage", tick_seconds=0.25):
     provider = create_provider(replace(settings, memory_enabled=memory))
-    sim = Simulation(seed, provider, memory_enabled=memory, memory_path=None, scenario=scenario, event_limit=max(4096, ticks*32), decision_trace_limit=100, timing=settings.action_timing, day_clock=settings.day_clock, survival=settings.survival, wildlife_settings=settings.wildlife)
+    sim = Simulation(seed, provider, memory_enabled=memory, memory_path=None, scenario=scenario, event_limit=max(4096, ticks*32), decision_trace_limit=100, timing=settings.action_timing, day_clock=settings.day_clock, survival=settings.survival, wildlife_settings=settings.wildlife, social_settings=settings.social)
     row = {"seed": seed, "condition": "MEMORY_ON" if memory else "MEMORY_OFF",
            "provider": settings.provider, "model": safe_text(settings.model, settings.api_key) if settings.provider == "gemini" else None,
            "status": "running", "initial_state_sha256": initial_fingerprint(sim)}
@@ -162,7 +168,7 @@ def export(output, config, rows):
 
 def run_batch(settings, runs, ticks, seed, output, scenario="food_shortage", tick_seconds=.25):
     output.mkdir(parents=True, exist_ok=False)
-    config = {"food_catalog": {key: {"name":definition.name,"hunger_reduction":definition.hunger_reduction} for key,definition in ITEM_DEFINITIONS.items()}, "wildlife": asdict(settings.wildlife), "day_clock": asdict(settings.day_clock), "survival": asdict(settings.survival), "action_timing": asdict(settings.action_timing), "provider": settings.provider, "model": safe_text(settings.model, settings.api_key) if settings.provider == "gemini" else None,
+    config = {"social":asdict(settings.social), "food_catalog": {key: {"name":definition.name,"hunger_reduction":definition.hunger_reduction} for key,definition in ITEM_DEFINITIONS.items()}, "wildlife": asdict(settings.wildlife), "day_clock": asdict(settings.day_clock), "survival": asdict(settings.survival), "action_timing": asdict(settings.action_timing), "provider": settings.provider, "model": safe_text(settings.model, settings.api_key) if settings.provider == "gemini" else None,
               "runs": runs, "ticks": ticks, "seeds": list(range(seed, seed+runs)),
               "action_timing_ticks": settings.action_timing.__dict__, "scenario": scenario, "max_ai_calls_per_trial": settings.max_calls,
               "cooldown_ticks": settings.cooldown_ticks, "timeout_seconds": settings.timeout_seconds,

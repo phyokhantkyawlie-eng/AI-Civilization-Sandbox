@@ -48,7 +48,7 @@ def observe(agent, world, resources, agents=(), radius=4, social=None):
     if social:
         for other in agents:
             if other.id != agent.id and other.position in visible:
-                candidates += [Action(kind, other.id) for kind in (ActionType.REQUEST_FOOD, ActionType.TALK)]
+                candidates += [Action(kind, other.id) for kind in (ActionType.REQUEST_FOOD, ActionType.TALK, ActionType.OFFER_FOOD)]
         for request in social.active_requests(agent):
             if request.recipient_id == agent.id:
                 candidates += [Action(kind, request.requester_id, request_id=request.id)
@@ -80,6 +80,9 @@ def observe(agent, world, resources, agents=(), radius=4, social=None):
             "interaction_range": social.interaction_range,
             "active_requests": [asdict(r) for r in social.active_requests(agent)],
         }
+        session=social.session_for(agent)
+        context['social']['current_session']=({'id':session.id,'purpose':session.purpose,'state':session.state.value,
+                                               'current_turn':session.current_turn} if session else None)
         if social.memory_enabled:
             peers = {a.id for a in agents if a.id != agent.id and a.position in visible}
             context["social"]["relationships"] = {p: social.trust_for(agent, p) for p in sorted(peers)}

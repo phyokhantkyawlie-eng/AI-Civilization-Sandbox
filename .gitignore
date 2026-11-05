@@ -19,3 +19,8 @@ htmlcov/
 .ruff_cache/
 delivery/
 experiments/
+
+# Private world checkpoints and interrupted atomic writes
+saves/
+*.civsave.json
+.world-*

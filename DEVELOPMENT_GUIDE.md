@@ -1,4 +1,4 @@
-# Development guide — offline Participant Mode Stage 5
+# Development guide — offline polish and persistence Stage 6
 
 ## Direction and launch
 
@@ -43,7 +43,7 @@ All providers return the existing frozen Action model: MOVE_TO, GATHER, EAT, RES
 
 ## Gaps to preserve for later survival stages
 
-Temporary incapacitation and timed recovery now exist, but no death/health model does, so mortality/survival metrics remain unavailable. Berries and cooked chicken are edible; raw chicken must be cooked. Participant Mode now controls one existing agent through the same scheduler; Observer Mode remains the experiment default. Social history persists, but physical world/inventory state is not a full game save. Rules use full-map resource knowledge, unlike the local structured adapter context. Utility ranking now covers survival and social goals with bounded multistep queues. It is a lightweight task planner, not a general-purpose search over arbitrary world states. Corridor yielding deliberately permits temporary tile overlap after three blocked ticks. Resource/social/event histories are bounded audit windows, not unlimited archives. These remain limitations after Stage 1.
+Temporary incapacitation and timed recovery now exist, but no death/health model does, so mortality/survival metrics remain unavailable. Berries and cooked chicken are edible; raw chicken must be cooked. Participant Mode now controls one existing agent through the same scheduler; Observer Mode remains the experiment default. Legacy social history remains supported; savegame.py now provides a separate explicit versioned full-world checkpoint. Rules use full-map resource knowledge, unlike the local structured adapter context. Utility ranking now covers survival and social goals with bounded multistep queues. It is a lightweight task planner, not a general-purpose search over arbitrary world states. Corridor yielding deliberately permits temporary tile overlap after three blocked ticks. Resource/social/event histories are bounded audit windows, not unlimited archives. These remain limitations after Stage 1.
 
 ## Verification and future changes
 
@@ -136,3 +136,15 @@ Incoming new TALK/OFFER_FOOD/REQUEST_FOOD actions targeting the human pause for 
 Menus and pending-response prompts suspend the shared fixed-tick world transparently; they do not accumulate a catch-up backlog. Prompt reading/countdown uses real UI seconds independent of speed, and explicit pause freezes it. After 30 unpaused real seconds, cancellation releases sessions and records an actual zero-trust-change cancellation, never an invented answer/transfer. No real-time waits run in Simulation. Headless CLI/experiments stay Observer Mode; programmatic controller tests call submit/answer/advance_prompt explicitly. Participant mode/session/input is transient and not added to social JSON persistence.
 
 See STAGE5_PARTICIPANT.md. Pre-change recovery commit: 422f618. Preserve existing original/normalized assets, private .env and normal social histories.
+
+## Stage 6 presentation/history/save boundaries
+
+Normal HUD text comes from ui_state.py helpers and authoritative agent/resources; raw diagnostics stay in F3. Do not add renderer-owned hunger/inventory copies. Portraits reuse cached original idle frames. Tree/shore/bush/chicken accents are deterministic drawing only and never alter world tiles or simulation RNG. Cards remain local; the explicitly labeled conversation reading panel is separate from above-NPC speech. Context validation is cached while menus freeze the physical world; submit/execution still revalidate actual state.
+
+history.py consumes numbered committed events into bounded human-readable projections: 200 world entries, 120 conversation turns. Consecutive identical actor/work messages within 60 ticks are grouped with counts/latest timestamps. Greetings/repeated rest/progress/wait/movement do not spam world news. Only actual delivered session turns enter conversation history. Feedback retains its separate ephemeral reading queue. History is data, never a decision provider input or source of world effects.
+
+savegame.py format civsandbox-world version 1 stores committed physical/social/resource/wildlife/clock/configuration/local RNG state, mode and selection. Validate a fresh candidate entirely before replacing live play. Never execute persisted actions, use pickle/eval, load provider names outside rule-based/mock, or import external SDK state. Activity jobs, cooking leases, claims, pending requests/conversations, player input and provider plans are transient and cleared on load; no unfinished reward/conversion occurs. Two loads of the same checkpoint reproduce each other, but a load that replans is not promised to match uninterrupted play bit for bit.
+
+F5 explicitly replaces only an existing supported full-world slot; foreign/legacy formats and failed atomic replacements preserve the prior file. F9 confirms and restores paused. Full-world loading has no legacy social memory_path, so closing a loaded world cannot overwrite unrelated normal social history. Continue saving it explicitly with F5. New normal games retain the old social-only shutdown persistence. CLI --load restores mode unless explicitly overridden; headless loads use Observer Mode. --save writes after headless ticks; --save-file chooses the interactive slot. No automatic full-world load/save is added.
+
+Retention is explicit: full saves retain the latest 200 news entries, 120 dialogue turns, existing 20 memories per NPC and 512 resource-ledger records. Raw debug events/planner caches and transient presentation queues restart. F5 is a single replaceable checkpoint; use another --save-file path to keep separate worlds. Keep private data in ignored data/, saves/ or *.civsave.json; never commit personal histories. No existing private file is migrated or removed. The 1100×750 logical layout remains; optional --window-scale 0.85/1.25 scales final presentation and transforms mouse targets back to logical coordinates. Verify native macOS/Retina scaling manually. See STAGE6_POLISH_PERSISTENCE.md. Pre-stage recovery: dce1d43.

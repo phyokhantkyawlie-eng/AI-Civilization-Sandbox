@@ -19,6 +19,7 @@ from .daynight import DayClock
 from .survival import SurvivalRules
 from .pacing import ActionProgress, ActionTiming
 from .player import PlayerController
+from .history import History
 
 
 class Simulation:
@@ -73,6 +74,9 @@ class Simulation:
         self.tick = 0
         self.paused = False
         self.player = None
+        self.history = History()
+        self.save_path = None
+        self.selected_id = None
 
     def set_participant(self, agent_id=None):
         """Hand off existing identities without changing physical state or history."""
@@ -261,6 +265,7 @@ class Simulation:
         for event in reversed(pending):
             self._event_sequence += 1
             event["event_id"] = self._event_sequence
+        self.history.consume(self.events, self.clock, self.social)
 
     def ai_summary(self):
         if hasattr(self.decision_provider, "summary"):

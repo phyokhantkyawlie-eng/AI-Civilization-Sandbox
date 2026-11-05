@@ -1,5 +1,8 @@
 """Small in-game mode/context menus; no simulation effects outside commands."""
 import pygame
+from pathlib import Path
+
+from .savegame import save_game, load_into, SaveError
 
 from .actions import Action, ActionType, validate
 from .inventory import ITEM_NAMES
@@ -19,6 +22,7 @@ class ParticipantUI:
         self.page = 0
         self.buttons = []
         self.options = []
+        self.allowed = {}
         self.inspect = None
         self.keys = []
         self.previews = {}
@@ -36,6 +40,7 @@ class ParticipantUI:
         self.menu, self.page = menu, 0
         self.buttons = []
         self.layout_token = None
+        self.allowed = {}
         if menu == 'context':
             self.options = []
             seen = set()
@@ -48,6 +53,11 @@ class ParticipantUI:
                              ('Eat cooked chicken', Action(ActionType.EAT, item='cooked_chicken')),
                              ('Rest until recovered', Action(ActionType.REST)),
                              ('Cancel activity', 'cancel')]
+        if sim.player and menu in ('context','inventory'):
+            actor = sim.social.agents[sim.player.agent_id]
+            choices = [choice for _,choice in self.options if isinstance(choice,Action)] if menu=='context' else [
+                Action(ActionType.EAT,item='berries'),Action(ActionType.EAT,item='cooked_chicken'),Action(ActionType.REST)]
+            self.allowed = {choice:validate(choice,actor,sim.world,sim.resources,sim.social) for choice in choices}
 
     def handle(self, event, sim, renderer):
         """Return True if this event belongs to participant/menu input."""
@@ -60,6 +70,19 @@ class ParticipantUI:
                 sim.player.direction = MOVES[self.keys[-1]] if self.keys else None
             return bool(sim.player)
         pending = bool(sim.player and sim.player.pending)
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_F5:
+                path = sim.save_path or Path(__file__).resolve().parent.parent/'data'/'world_save.json'
+                try:
+                    save_game(sim,path,renderer.selected_id)
+                    sim.save_path = path
+                    renderer.notify('World saved. F9 loads this checkpoint.')
+                except SaveError as error:
+                    renderer.notify(str(error))
+                return True
+            if not pending and event.key in (pygame.K_F1,pygame.K_F9):
+                self.open('help' if event.key==pygame.K_F1 else 'load',sim)
+                return True
         if pending or self.menu:
             token = ('prompt', id(sim.player.pending)) if pending else ('menu', self.menu)
             if self.layout_token != token:
@@ -129,6 +152,14 @@ class ParticipantUI:
         elif isinstance(choice, tuple):
             self.inspect = choice
             self.menu = 'inspect'
+        elif choice == 'load':
+            path = sim.save_path or Path(__file__).resolve().parent.parent/'data'/'world_save.json'
+            try:
+                load_into(sim,path)
+                renderer.reset_after_load(sim)
+            except SaveError as error:
+                renderer.notify(str(error))
+            self.menu = None
         elif choice == 'cancel':
             sim.player.cancel(sim)
             self.menu = None
@@ -189,6 +220,28 @@ class ParticipantUI:
                 text = text[:-2]+'…'
             renderer.screen.blit(renderer.small.render(text, True, (232,215,164)), (255,398))
             renderer.text('Esc: decline. No food moves until validated completion.', (255,454))
+        elif self.menu == 'help':
+            renderer.text('Controls and help',(255,170),title=True)
+            lines = ['M: choose Observer Mode or control a villager.',
+                     'WASD / arrows: move in Participant Mode.',
+                     'E: nearby actions and inspection. I: inventory / meals / rest.',
+                     'Backspace: cancel unfinished work. Esc: close menus.',
+                     'Space: pause. Minus / plus: adjust speed.',
+                     'C: conversations. N: village event history.',
+                     'F5 / Save: save this world. F9 / Load: review a checkpoint.',
+                     'Menus pause everyone. Unanswered invitations cancel safely.',
+                     'Food and ingredients change only after an action completes.',
+                     'F3: optional detailed inspection. P: plans. S: social sessions.']
+            for i,line in enumerate(lines):
+                renderer.screen.blit(renderer.small.render(line,True,(221,229,211)),(255,222+i*31))
+            self.button(renderer,'1. Back to village',565,'close')
+        elif self.menu == 'load':
+            renderer.text('Load saved world?',(255,170),title=True)
+            renderer.text('Unsaved progress will be replaced.',(255,231))
+            renderer.text('Unfinished work resumes safely as idle, without free rewards.',(255,270))
+            renderer.text('Legacy social-history files are left untouched.',(255,309))
+            self.button(renderer,'1. Load checkpoint',390,'load')
+            self.button(renderer,'2. Keep current world',445,'close')
         elif self.menu == 'modes':
             renderer.text('Choose your role', (255,164), title=True)
             for i, actor in enumerate(sim.agents):
@@ -208,7 +261,7 @@ class ParticipantUI:
             self.page = min(self.page, max(0,len(self.options)-6))
             actor = sim.social.agents[player.agent_id]
             for i, (label, choice) in enumerate(self.options[self.page:self.page+6]):
-                enabled = not isinstance(choice,Action) or validate(choice,actor,sim.world,sim.resources,sim.social)
+                enabled = not isinstance(choice,Action) or self.allowed.get(choice,False)
                 self.button(renderer, f'{i+1}. '+label+('' if enabled else ' (unavailable)'), 214+i*54, choice, enabled)
             renderer.text('Scroll: more options. 1–6 or click. Esc: close.', (255,564))
             text = player.message
@@ -226,7 +279,7 @@ class ParticipantUI:
                     ('1. Eat berries',362,Action(ActionType.EAT,item='berries')),
                     ('2. Eat cooked chicken',414,Action(ActionType.EAT,item='cooked_chicken')),
                     ('3. Rest until recovered',466,Action(ActionType.REST))):
-                self.button(renderer,label,y,action,validate(action,actor,sim.world,sim.resources,sim.social))
+                self.button(renderer,label,y,action,self.allowed.get(action,False))
             message = player.message
             while renderer.small.size(message)[0]>580:
                 message=message[:-2]+'…'
@@ -237,19 +290,24 @@ class ParticipantUI:
             renderer.text('Inspect '+kind, (255,170), title=True)
             if kind == 'bush':
                 bush = sim.resources.bushes[key]
-                lines = [bush.id, f'Position: {bush.position}', f'Berries: {bush.quantity}/{bush.capacity}',
-                         f'Regeneration: {bush.regeneration_progress}/{bush.regeneration_interval} ticks']
+                lines = ['Berry bush',f'Berries available: {bush.quantity}/{bush.capacity}',
+                         f'Next berry in {bush.ticks_until_regeneration*.25:g} seconds' if bush.ticks_until_regeneration is not None else 'Fully grown']
             elif kind == 'chicken':
                 chicken = sim.wildlife.chickens.get(key)
-                lines = [key, f'Position: {chicken.position}', chicken.activity, 'Alive' if chicken.alive else 'No longer alive'] if chicken else ['Chicken no longer present']
+                lines = ['Chicken',chicken.activity.capitalize(),'Alive' if chicken.alive else 'No longer alive'] if chicken else ['Chicken no longer present']
             elif kind == 'station':
                 station = sim.cooking_station
-                lines = [station.id, f'Position: {station.position}', 'Busy' if station.occupied_by else 'Available', 'One raw chicken becomes one cooked chicken.']
+                lines = ['Campfire','Cooking: '+sim.social.agents[station.occupied_by].name if station.occupied_by else 'Available', 'One raw chicken becomes one cooked chicken.']
             else:
                 actor = sim.social.agents[player.agent_id]
                 peer = sim.social.agents[key]
-                lines = [peer.name+' — '+peer.personality_name, f'Your trust: {sim.social.trust_for(actor,key):+d}' if sim.social.memory_enabled else 'Historical memory disabled']
-                lines += [m['result'] for m in sim.social.relevant_memories(actor,{key},4)]
+                trust = sim.social.trust_for(actor,key)
+                label = 'Growing trust' if trust>0 else 'Low trust' if trust<0 else 'Getting acquainted'
+                lines = [peer.name+' — '+peer.personality_name,label if sim.social.memory_enabled else 'Historical memory disabled']
+                friendly = {'shared one food':'shared a berry','offered one food':'offered a berry',
+                            'refused':'declined a request','greeted':'exchanged greetings','pending':'asked for food'}
+                lines += [sim.social.agents[m['actor_id']].name+' '+friendly.get(m['result'],'ended an interaction')
+                          for m in sim.social.relevant_memories(actor,{key},4)]
             for i, line in enumerate(lines):
                 renderer.text(line, (255,230+i*34))
             self.button(renderer, '1. Close', 554, 'close')

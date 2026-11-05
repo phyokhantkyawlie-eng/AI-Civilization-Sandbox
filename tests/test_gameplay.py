@@ -104,7 +104,7 @@ def test_status_thresholds_and_inspectable_resource():
     try:
         r = Renderer()
         assert not r.debug
-        assert hunger_status(0)[0] == "Full" and hunger_status(100)[0] == "Starving"
+        assert hunger_status(0)[0] == "Well fed" and hunger_status(100)[0] == "Starving"
         assert energy_status(0)[0] == "Exhausted" and energy_status(100)[0] == "Rested"
         bush = next(iter(sim.resources.stocks()))
         r.select_at((ORIGIN[0]+bush[0]*TILE_SIZE+18, ORIGIN[1]+bush[1]*TILE_SIZE+18), sim)

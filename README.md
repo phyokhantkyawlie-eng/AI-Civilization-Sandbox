@@ -4,7 +4,24 @@ CSC472 Artificial Intelligence final project for a two-student team. **Animated 
 
 
 
-## Current gameplay — Stage 5: Participant Mode
+## Current gameplay — Stage 6: polished HUD and world checkpoints
+
+The normal interface now emphasizes the game title, day/time, mode, selected character portrait/role, readable needs, inventory, current goal, relationship summary and meaningful news. **F3** retains raw values, tick/seed, scores and decision details. Resource dots show actual berry stock; depleted bushes, layered trees, shore edges, outlined chickens and nearby interaction highlights preserve the existing map and original character art.
+
+**F1 / Help** opens controls. Use `--window-scale 0.85` for a compact window or `1.25` for a larger one; the logical layout and mouse targets stay consistent. **N** opens timestamped village news; **C** opens separate conversation history. Repeated minor work is grouped. Current dialogue has a distinct reading panel and still requires accepted physical sessions for speech bubbles. The existing Observer/Participant controls are preserved.
+
+**F5 / Save** writes a full-world checkpoint to `data/world_save.json`. **F9 / Load** asks before replacing current play and loads paused for review. This is separate from legacy social history, which is never overwritten by world loading. Needs, inventories, locations, trust/memories, resources, chickens/repopulation, day/time, local provider, mode and selection persist. Interrupted work/sessions resume as idle without granting unfinished rewards; plans are reevaluated. Saves are atomic, validated and versioned JSON, with no external API dependency.
+
+```bash
+python -m civsandbox --mode participant --character mira --provider rule-based --seed 7
+python -m civsandbox --load data/world_save.json
+python -m pytest -q
+```
+
+Verification: **360 passed, 1 skipped**. See [STAGE6_POLISH_PERSISTENCE.md](STAGE6_POLISH_PERSISTENCE.md) for save semantics, retention limits, executed checks, headless commands and manual visual QA. Private saves belong in ignored `data/` or `saves/`; `*.civsave.json` and temporary world writes are also ignored. Earlier stage notes below describe their historical versions.
+
+## Participant baseline — Stage 5
+
 
 Choose **Observer Mode** (all four autonomous) or control one existing character in **Participant Mode**. Press **M** for the in-game mode/character menu, with original artwork, personalities and roles. Switching keeps the same world, four Agent objects, inventories, needs, trust and memories. Unfinished tasks are canceled safely and stale input/plans clear.
 

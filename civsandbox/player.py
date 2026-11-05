@@ -39,7 +39,8 @@ class PlayerController:
             self.message = 'Finish this activity or press Backspace to cancel.'
             return False
         if not validate(action, actor, sim.world, sim.resources, sim.social):
-            self.message = 'Unavailable: check proximity, ingredients, energy and capacity.'
+            from .ui_state import unavailable_reason
+            self.message = unavailable_reason(action,actor,sim)
             return False
         self.clear()
         self.command = action

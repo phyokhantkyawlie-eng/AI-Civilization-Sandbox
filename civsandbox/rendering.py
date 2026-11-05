@@ -7,8 +7,10 @@ from .animation import SpriteAnimator, CharacterView
 from .feedback import Feedback
 from .participant_ui import ParticipantUI
 from .characters import CHARACTERS
+from .history import timestamp
 from .inventory import ITEM_NAMES
-from .ui_state import activity, hunger_status, energy_status, StatusThresholds
+from .ui_state import (activity, hunger_status, energy_status, StatusThresholds,
+                       CHARACTER_ROLES, inventory_lines, goal_label, relationship_summary, action_progress)
 from .sprites import CharacterAssets, FOOT_ANCHOR, FRAME_SIZE
 
 SOCIAL_LABELS = {"REQUEST_FOOD": "ask", "SHARE_FOOD": "share", "OFFER_FOOD": "offer",
@@ -20,10 +22,13 @@ ORIGIN = (20, 78)
 
 
 class Renderer:
-    def __init__(self, animation_fps=8.0):
+    def __init__(self, animation_fps=8.0, window_scale=1.0):
         pygame.display.init()
         pygame.font.init()
-        self.screen = pygame.display.set_mode(WINDOW)
+        if window_scale not in (.85,1.0,1.25):
+            raise ValueError('Window scale must be 0.85, 1 or 1.25')
+        self.display = pygame.display.set_mode(tuple(round(size*window_scale) for size in WINDOW))
+        self.screen = self.display if window_scale==1 else pygame.Surface(WINDOW).convert()
         pygame.display.set_caption("AI Civilization Sandbox | Animated Characters")
         self.font = pygame.font.Font(None, 23)
         self.title = pygame.font.Font(None, 32)
@@ -36,6 +41,10 @@ class Renderer:
         self.social_debug = False
         self.history_open = False
         self.history_page = 0
+        self.world_history_open = False
+        self.news_page = 0
+        self.notification = ""
+        self.notification_seconds = 0
         self.selected_bush = None
         self.inspector_tab = "State"
         self.memory_page = 0
@@ -125,8 +134,13 @@ class Renderer:
                 self.draw_character(agent, foot)
             elif kind == 2:
                 chicken, foot = item
+                if simulation.player and simulation.social.nearby(simulation.social.agents[simulation.player.agent_id],chicken):
+                    pygame.draw.ellipse(self.screen,(237,213,143),(foot[0]-16,foot[1]-5,32,9),2)
                 self.draw_chicken(chicken, foot, simulation.tick)
             else:
+                if simulation.player and simulation.social.agents[simulation.player.agent_id].position in simulation.world.neighbors(item.position):
+                    x,y=ORIGIN[0]+item.position[0]*TILE_SIZE,ORIGIN[1]+item.position[1]*TILE_SIZE
+                    pygame.draw.ellipse(self.screen,(237,213,143),(x+2,y+17,32,15),2)
                 self.draw_campfire(item)
         # Labels are drawn above foreground terrain so every villager stays identifiable.
         for agent in simulation.agents:
@@ -139,6 +153,8 @@ class Renderer:
             y -= companions.index(agent)*16
             background = pygame.Rect(rect.centerx-label.get_width()//2-4, y-1, label.get_width()+8, 16)
             pygame.draw.rect(self.screen, (29, 43, 41), background, border_radius=4)
+            if agent.id == self.selected_id:
+                pygame.draw.rect(self.screen,(237,213,143),background,1,border_radius=4)
             self.screen.blit(label, (background.x+4, y))
         darkness = simulation.time_of_day.darkness
         if darkness:
@@ -226,8 +242,12 @@ class Renderer:
         else:
             self.draw_friendly_panel(simulation, ticker)
             self.draw_conversation_panel(simulation)
+            self.draw_world_history(simulation)
+        simulation.selected_id = self.selected_id
         self.draw_controls(simulation)
         self.participant_ui.draw(self, simulation)
+        if self.screen is not self.display:
+            pygame.transform.smoothscale(self.screen,self.display.get_size(),self.display)
         pygame.display.flip()
 
 
@@ -236,6 +256,7 @@ class Renderer:
             if agent.id not in self.characters:
                 self.characters[agent.id] = CharacterView(
                     agent.position, SpriteAnimator(self.assets.for_agent(agent), self.animation_fps))
+                self.characters[agent.id].animator.update(0,False,agent.facing)
             elif self.characters[agent.id].logical_position != agent.position:
                 # draw() used without tick callbacks (e.g. a restored snapshot): snap, never cut corners.
                 self.characters[agent.id].snap(agent.position)
@@ -245,6 +266,7 @@ class Renderer:
             if agent.id not in self.characters:
                 self.characters[agent.id] = CharacterView(
                     agent.position, SpriteAnimator(self.assets.for_agent(agent), self.animation_fps))
+                self.characters[agent.id].animator.update(0,False,agent.facing)
             else:
                 self.characters[agent.id].capture(agent.position, seconds)
             if simulation.progress.held(agent) or simulation.social.active_requests(agent):
@@ -283,7 +305,11 @@ class Renderer:
             pygame.draw.rect(self.screen, (70, 91, 89), rect, border_radius=5)
             self.screen.blit(self.small.render(label, True, (245, 230, 191)), (x+10, 682))
             self.control_buttons[key] = rect
-        self.screen.blit(self.small.render("Space / +/- / M: modes", True, (179, 197, 192)), (900, 716))
+        for key,label,x in (('save','Save',900),('load','Load',965),('help','Help',1030)):
+            rect = pygame.Rect(x,712,59,26)
+            pygame.draw.rect(self.screen,(55,74,73),rect,border_radius=4)
+            self.screen.blit(self.small.render(label,True,(225,225,205)),(x+10,719))
+            self.control_buttons[key] = rect
 
     def draw_bar(self, title, value, description, color, y):
         self.text(title, (906, y))
@@ -293,92 +319,116 @@ class Renderer:
         if width:
             pygame.draw.rect(self.screen, color, (906, y+24, width, 12), border_radius=5)
 
+    def wrapped(self, text, x, y, width=178, max_lines=3, color=(218,228,217)):
+        lines, line = [], ''
+        for word in text.split():
+            candidate = (line+' '+word).strip()
+            if self.small.size(candidate)[0]>width and line:
+                lines.append(line)
+                line = word
+            else:
+                line = candidate
+        lines.append(line)
+        for i, line in enumerate(lines[:max_lines]):
+            self.screen.blit(self.small.render(line,True,color),(x,y+i*17))
+        return y+min(len(lines),max_lines)*17
+
+    def notify(self, text):
+        self.notification, self.notification_seconds = text, 6.0
+
+    def reset_after_load(self, simulation):
+        self.characters.clear()
+        self.character_rects.clear()
+        self.chicken_rects.clear()
+        self.feedback = Feedback()
+        self.selected_id = simulation.selected_id
+        self.selected_bush = None
+        self.history_open = self.world_history_open = False
+        self.history_page = self.news_page = 0
+        self.participant_ui.stop(simulation)
+        simulation.paused = True
+        self.notify('World loaded. Unfinished activities released safely. Press Play to continue.')
+
     def draw_friendly_panel(self, simulation, ticker):
-        pygame.draw.rect(self.screen, (24, 34, 39), (0, 0, 1100, 74))
-        self.text("STARFALL VILLAGE", (20, 17), title=True)
+        pygame.draw.rect(self.screen,(24,34,39),(0,0,1100,74))
+        self.text('AI CIVILIZATION SANDBOX',(20,17),title=True)
         now = simulation.time_of_day
-        self.text(f"Day {now.day}  ·  {now.hour:02d}:{now.minute:02d}  ·  {now.period.title()}", (20, 49), (193, 205, 181))
-        station_status="Campfire: Busy" if simulation.cooking_station.occupied_by else "Campfire: Ready"
-        self.screen.blit(self.small.render(station_status,True,(222,202,153)),(460,49))
-        latest=next((e for e in reversed(simulation.events) if e.get('executed') and e['action'] in ('GATHER','EAT','COOK','HUNT')
-                     or e.get('social') and e.get('result') in ('pending','shared one food','offered one food','refused','greeted')),None)
-        if latest:
-            verb={'GATHER':'picked berries','EAT':'ate a meal','COOK':'cooked chicken','HUNT':'collected raw chicken',
-                  'TALK':'greeted a neighbor','REQUEST_FOOD':'asked for food','SHARE_FOOD':'shared a berry',
-                  'OFFER_FOOD':'offered a berry','REFUSE_REQUEST':'declined a request'}.get(latest['action'],'met a neighbor')
-            label=f"{latest.get('agent','Villager')} {verb}"
-            while self.small.size(label)[0]>430:label=label[:-2]+'…'
-            self.screen.blit(self.small.render(label,True,(193,205,181)),(640,49))
-        self.text("F3 · Details", (944, 24), (193, 205, 181))
-        pygame.draw.rect(self.screen, (35, 49, 54), (892, 74, 204, 594), border_radius=10)
-        self.text("Paused" if simulation.paused else "Village life", (906, 87), title=True)
-        self.text(f"Speed {ticker.speed:g}×", (906, 124), (193, 205, 181))
-        actor = next((a for a in simulation.agents if a.id == self.selected_id), None)
+        self.text(f'Day {now.day}  ·  {now.hour:02d}:{now.minute:02d}  ·  {now.period.title()}',
+                  (20,49),(193,205,181))
+        self.screen.blit(self.small.render('Campfire: '+('Busy' if simulation.cooking_station.occupied_by else 'Ready'),
+                                         True,(222,202,153)),(460,49))
+        latest = self.notification if self.notification_seconds>0 else (
+            simulation.history.world[-1]['text'] if simulation.history.world else 'F1: controls and help')
+        while self.small.size(latest)[0]>430:
+            latest = latest[:-2]+'…'
+        self.screen.blit(self.small.render(latest,True,(216,209,177)),(640,49))
+        self.text('F3 · Details',(944,24),(193,205,181))
+        pygame.draw.rect(self.screen,(35,49,54),(892,74,204,594),border_radius=10)
+        self.text('Paused' if simulation.paused else 'Village life',(906,87))
+        self.screen.blit(self.small.render(f'{ticker.speed:g}x speed',True,(184,202,191)),(1018,94))
+        actor = next((a for a in simulation.agents if a.id==self.selected_id),None)
         if actor:
-            self.text(actor.name, (906, 172), actor.color, title=True)
-            self.screen.blit(self.small.render(activity(actor, simulation), True, (235, 222, 184)), (906, 207))
+            portrait = self.assets.for_agent(actor)['down'][0]
+            self.screen.blit(portrait,(906,128))
+            self.text(actor.name,(959,132),title=True)
+            self.screen.blit(self.small.render(CHARACTER_ROLES[actor.id],True,(222,201,154)),(959,160))
+            self.wrapped(activity(actor,simulation),906,192,max_lines=2,color=(235,222,184))
+            progress = action_progress(actor,simulation)
+            if progress is not None:
+                pygame.draw.rect(self.screen,(22,34,39),(906,231,178,4),border_radius=2)
+                pygame.draw.rect(self.screen,(221,187,111),(906,231,round(178*progress),4),border_radius=2)
             rules = simulation.survival
-            thresholds = StatusThresholds(rules.hungry, rules.inefficient_hunger, rules.rest_energy, rules.collapse_energy)
-            label, color = hunger_status(actor.hunger, thresholds)
-            self.draw_bar("Hunger", actor.hunger, label, color, 244)
-            label, color = energy_status(actor.energy, thresholds)
-            self.draw_bar("Energy", actor.energy, label, color, 300)
-            self.text(f"Inventory ({actor.inventory.used}/{actor.inventory.capacity})", (906, 366))
-            for row, (item, quantity) in enumerate(sorted(actor.inventory.items.items())):
-                self.text(f"{ITEM_NAMES[item]} × {quantity}", (906, 393+row*18), (226, 179, 161))
-            if not actor.inventory.used:
-                self.text("Empty", (906, 397), (193, 205, 181))
-            goal = actor.goal.purpose.title() if actor.goal else ("Choose an action" if simulation.player and simulation.player.agent_id == actor.id else "Reevaluating")
-            self.screen.blit(self.small.render(f"Goal: {goal}", True, (193, 205, 181)), (906, 350))
-            self.screen.blit(self.small.render(actor.personality_name, True, (193, 205, 181)), (906, 451))
+            thresholds = StatusThresholds(rules.hungry,rules.inefficient_hunger,rules.rest_energy,rules.collapse_energy)
+            label,color = hunger_status(actor.hunger,thresholds)
+            self.draw_bar('Hunger',actor.hunger,label,color,244)
+            label,color = energy_status(actor.energy,thresholds)
+            self.draw_bar('Energy',actor.energy,label,color,294)
+            self.text('Inventory',(906,350))
+            self.screen.blit(self.small.render(f'{actor.inventory.used}/{actor.inventory.capacity} slots',True,(184,202,191)),(1026,353))
+            for row,line in enumerate(inventory_lines(actor)):
+                self.screen.blit(self.small.render(line,True,(226,199,166)),(906,379+row*19))
+            self.wrapped('Goal: '+goal_label(actor,simulation),906,441,max_lines=2)
+            self.wrapped(relationship_summary(actor,simulation.social),906,488,max_lines=2,color=(183,209,187))
         elif self.selected_bush is not None:
             bush = simulation.resources.bushes[self.selected_bush]
-            self.text("Berry bush", (906, 172), title=True)
-            self.text(f"Berries {bush.quantity}/{bush.capacity}", (906, 213))
-            self.screen.blit(self.small.render(f"{bush.id} · {bush.position}", True, (193, 205, 181)), (906, 242))
+            self.text('Berry bush',(906,153),title=True)
+            self.text(f'Berries {bush.quantity}/{bush.capacity}',(906,204))
+            self.wrapped('Ready to gather' if bush.quantity else 'Depleted; growing new berries',906,250)
             remaining = bush.ticks_until_regeneration
             if remaining is not None:
-                self.text("Regrowing", (906, 272), (193, 205, 181))
-                self.text(f"Next berry in {remaining*.25:g}s", (906, 302))
-                self.draw_bar("Regeneration", 100*bush.regeneration_progress/bush.regeneration_interval, "", (106, 164, 104), 340)
+                self.text(f'Next berry in {remaining*.25:g}s',(906,310))
+                self.draw_bar('Regrowth',100*bush.regeneration_progress/bush.regeneration_interval,'',(106,164,104),350)
             else:
-                self.text("Fully grown", (906, 272))
+                self.text('Fully grown',(906,310))
+            self.wrapped('Participant: approach and press E to gather or inspect.',906,424,max_lines=4)
         else:
-            self.text("Meet the villagers", (906, 172))
-            self.screen.blit(self.small.render("Click a person or berry bush", True, (193, 205, 181)), (906, 207))
-        self.text("Village news", (906, 480))
-        interesting = [e for e in reversed(simulation.events) if e.get("social") or (
-            e.get("executed") and e["action"] in ("GATHER", "EAT", "HUNT", "COOK")) or e["action"] == "HUNT_FAILED"][:4]
-        names = {a.id: a.name for a in simulation.agents}
-        for index, event in enumerate(interesting):
-            if event.get("social"):
-                target = names.get(event.get("target_id"), "someone")
-                verb = {"pending": "asked", "shared one food": "shared with", "refused": "declined",
-                        "greeted": "greeted", "expired": "waited for"}.get(event.get("result"), "met")
-                text = f"{event['agent']} {verb} {target}"
-            elif event["action"] == "HUNT_FAILED":
-                name = names.get(event.get("actor_id"), "Villager")
-                text = f"{name}'s hunt ended"
-            elif event["action"] == "HUNT":
-                text = f"{event['agent']} collected raw chicken"
-            elif event["action"] == "COOK":
-                text = f"{event['agent']} cooked chicken"
-            elif event["action"] == "EAT":
-                text = f"{event['agent']} ate {ITEM_NAMES.get(event.get('item'), 'berries').lower()}"
-            else:
-                text = f"{event['agent']} picked berries"
-            words, lines, line = text.split(), [], ""
-            for word in words:
-                candidate = (line+" "+word).strip()
-                if self.small.size(candidate)[0] > 176 and line:
-                    lines.append(line)
-                    line = word
-                else:
-                    line = candidate
-            lines.append(line)
-            for row, line in enumerate(lines[:2]):
-                self.screen.blit(self.small.render(line, True, (211, 218, 207)),
-                                 (906, 516+index*36+row*16))
+            self.text('Meet the villagers',(906,153))
+            self.wrapped('Click a character to inspect their life. Press M to participate.',906,196,max_lines=5)
+        self.text('Village news · N',(906,536))
+        records = list(simulation.history.world)[-2:]
+        y = 556
+        for record in reversed(records):
+            self.screen.blit(self.small.render(record['timestamp'],True,(157,185,172)),(906,y))
+            suffix = f" (x{record['count']})" if record['count']>1 else ''
+            y = self.wrapped(record['text']+suffix,906,y+17,max_lines=2)+7
+        if not records:
+            self.wrapped('Meaningful events will appear here.',906,568,color=(157,185,172))
+
+    def draw_world_history(self, simulation):
+        if not self.world_history_open:
+            return
+        pygame.draw.rect(self.screen,(35,49,54),(898,120,195,540),border_radius=6)
+        self.text('Village history',(904,134))
+        self.screen.blit(self.small.render('N: close / scroll: earlier',True,(184,204,192)),(904,164))
+        records = list(reversed(simulation.history.world))
+        self.news_page = min(self.news_page,max(0,len(records)-1))
+        y = 199
+        for record in records[self.news_page:self.news_page+5]:
+            self.screen.blit(self.small.render(record['timestamp'],True,(229,209,161)),(904,y))
+            suffix = f" (x{record['count']})" if record['count']>1 else ''
+            y = self.wrapped(record['text']+suffix,904,y+19,max_lines=3)+16
+            if y>570:
+                break
 
     def draw_feedback(self):
         """Place local cards from this frame's interpolated sprite rectangles."""
@@ -446,39 +496,28 @@ class Renderer:
 
     def draw_conversation_panel(self, simulation):
         entry = self.feedback.current_dialogue
-        history = list(self.feedback.history)
-        if not entry and not self.history_open and not history:
-            return
         names = {a.id:a.name for a in simulation.agents}
-        if self.history_open:
-            bounds = pygame.Rect(898,160,195,500)
-            entries = list(reversed(history))
-            self.history_page = min(self.history_page,max(0,len(entries)-1))
-            entries = entries[self.history_page:self.history_page+5]
-            y = 234
-        else:
-            bounds = pygame.Rect(898,476,195,183)
-            entries = [entry] if entry else history[-1:]
-            y = 511
-        pygame.draw.rect(self.screen,(35,49,54),bounds,border_radius=6)
-        if self.history_open:
-            self.text('Conversations',(904,171),title=True)
-            self.screen.blit(self.small.render('C: close / scroll: earlier',True,(184,204,192)),(904,204))
-        else:
-            self.screen.blit(self.small.render('Conversation · C: history',True,(227,213,175)),(904,484))
-        for record in entries:
-            speaker=names.get(record['actor_id'],'?')
-            partner=names.get(record['target_id'],'?')
-            self.screen.blit(self.small.render(f'{speaker} > {partner}',True,(245,218,158)),(904,y))
-            y+=18
-            line=''
-            for word in record['text'].split():
-                candidate=(line+' '+word).strip()
-                if self.small.size(candidate)[0]>180 and line:
-                    self.screen.blit(self.small.render(line,True,(224,231,221)),(904,y));y+=17;line=''
-                line=(line+' '+word).strip()
-            self.screen.blit(self.small.render(line,True,(224,231,221)),(904,y));y+=25
-            if y>620:break
+        if not self.history_open:
+            if entry:
+                # A distinct reading panel remains readable after logical completion.
+                card = pygame.Rect(24,598,500,80)
+                pygame.draw.rect(self.screen,(35,49,54),card,border_radius=7)
+                self.screen.blit(self.small.render('Conversation · '+timestamp(simulation.clock,entry['tick'])+' · C: history',True,(222,202,153)),(34,607))
+                speaker,partner = names.get(entry['actor_id'],'?'),names.get(entry['target_id'],'?')
+                self.wrapped(f'{speaker} > {partner}: '+entry['text'],34,629,width=480,max_lines=2)
+            return
+        history = list(reversed(simulation.history.conversations))
+        pygame.draw.rect(self.screen,(35,49,54),(898,120,195,540),border_radius=6)
+        self.text('Conversations',(904,134))
+        self.screen.blit(self.small.render('C: close / scroll: earlier',True,(184,204,192)),(904,164))
+        self.history_page = min(self.history_page,max(0,len(history)-1))
+        y = 198
+        for record in history[self.history_page:self.history_page+4]:
+            self.screen.blit(self.small.render(record['timestamp'],True,(176,197,181)),(904,y))
+            y = self.wrapped(names[record['actor_id']]+' > '+names[record['target_id']],904,y+18,max_lines=1,color=(245,218,158))
+            y = self.wrapped(record['text'],904,y,max_lines=3)+13
+            if y>555:
+                break
         self.screen.blit(self.small.render('Authored offline dialogue',True,(167,190,181)),(904,640))
 
     def draw_session_debug(self, simulation):
@@ -547,7 +586,8 @@ class Renderer:
         pygame.draw.ellipse(self.screen, (54, 72, 49), (x-10, y-3, 20, 6))
         pygame.draw.line(self.screen, (221, 159, 62), (x-3,y-4), (x-4,y+1-bob), 2)
         pygame.draw.line(self.screen, (221, 159, 62), (x+3,y-4), (x+5,y+1+bob), 2)
-        pygame.draw.ellipse(self.screen, (230, 223, 194), (x-10,y-18-bob,20,15))
+        pygame.draw.ellipse(self.screen,(103,86,57),(x-11,y-19-bob,22,17))
+        pygame.draw.ellipse(self.screen, (240, 230, 198), (x-10,y-18-bob,20,15))
         pygame.draw.ellipse(self.screen, (205, 193, 159), (x-6,y-14-bob,10,8), 1)
         pygame.draw.circle(self.screen, (246, 238, 205), (head_x,head_y), 6)
         pygame.draw.circle(self.screen, (185, 64, 53), (head_x-2,head_y-6), 3)
@@ -566,23 +606,34 @@ class Renderer:
         if tile == Tile.TREE:
             pygame.draw.rect(self.screen, (112, 77, 48), (cx-3, cy, 6, 13))
             pygame.draw.ellipse(self.screen, (61, 92, 55), (cx-14, cy+8, 28, 8))
+            pygame.draw.circle(self.screen, (30, 67, 48), (cx+1, cy-4), 16)
             pygame.draw.circle(self.screen, (39, 82, 54), (cx, cy-5), 15)
             pygame.draw.circle(self.screen, (54, 104, 60), (cx-5, cy-9), 10)
             pygame.draw.circle(self.screen, (70, 120, 65), (cx-5, cy-12), 6)
         elif tile == Tile.BUSH:
-            if position == self.selected_bush:
+            nearby = bool(simulation.player and simulation.social.agents[simulation.player.agent_id].position in simulation.world.neighbors(position))
+            if position == self.selected_bush or nearby:
                 pygame.draw.ellipse(self.screen, (246, 225, 146), rect.inflate(-1, -5), 2)
             stock = simulation.resources.available(position)
+            pygame.draw.ellipse(self.screen,(54,79,49),(cx-15,cy+6,30,9))
             pygame.draw.ellipse(self.screen, (48, 104, 59) if stock else (104, 110, 73), rect.inflate(-4, -12))
+            pygame.draw.arc(self.screen,(91,137,74) if stock else (135,139,91),rect.inflate(-7,-15),.3,2.8,2)
             if not stock:
                 pygame.draw.line(self.screen, (124, 145, 87), (cx-7, cy+5), (cx+5, cy-4), 2)
             if simulation.resources.available(position):
-                for dx, dy in ((-6, 0), (5, 2), (0, -4)):
+                for dx, dy in ((-6,0),(5,2),(0,-4),(-3,5),(7,-4))[:min(stock,5)]:
                     pygame.draw.circle(self.screen, (161, 57, 91), (cx+dx, cy+dy), 3)
                     pygame.draw.circle(self.screen, (233, 140, 150), (cx+dx-1, cy+dy-1), 1)
         elif tile == Tile.WATER:
             pygame.draw.rect(self.screen, (56, 126, 161), rect)
-            pygame.draw.line(self.screen, (102, 169, 193), (cx-9, cy), (cx+8, cy), 2)
+            # Small shore edges reflect adjacent terrain; no tile is changed.
+            for dx,dy,start,end in ((0,-1,rect.topleft,rect.topright),(0,1,rect.bottomleft,rect.bottomright),
+                                    (-1,0,rect.topleft,rect.bottomleft),(1,0,rect.topright,rect.bottomright)):
+                x,y=position[0]+dx,position[1]+dy
+                if not (0<=x<simulation.world.width and 0<=y<simulation.world.height) or simulation.world.tiles[y][x]!=Tile.WATER:
+                    pygame.draw.line(self.screen,(99,156,147),start,end,3)
+            offset=(position[0]*11+position[1]*7)%13-6
+            pygame.draw.line(self.screen,(102,169,193),(cx-8,cy+offset),(cx+5,cy+offset),1)
         elif tile == Tile.HOUSE:
             pygame.draw.rect(self.screen, (213, 189, 145), (cx-12, cy-2, 24, 16))
             pygame.draw.polygon(self.screen, (155, 77, 61),
@@ -652,15 +703,22 @@ class Renderer:
 
 def handle_event(event, simulation, ticker, renderer=None) -> bool:
     """Return False when the user requests exit."""
+    if renderer and hasattr(event,'pos') and event.type in (pygame.MOUSEBUTTONDOWN,pygame.MOUSEBUTTONUP,pygame.MOUSEMOTION):
+        width,height=renderer.display.get_size()
+        event=pygame.event.Event(event.type,{**event.dict,'pos':(round(event.pos[0]*WINDOW[0]/width),
+                                                               round(event.pos[1]*WINDOW[1]/height))})
     if renderer and renderer.participant_ui.handle(event, simulation, renderer):
         return True
     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and renderer:
         clicked = next((key for key, rect in renderer.control_buttons.items() if rect.collidepoint(event.pos)), None)
         if clicked:
-            key = {"pause": pygame.K_SPACE, "slower": pygame.K_MINUS, "faster": pygame.K_EQUALS}[clicked]
+            key = {'pause':pygame.K_SPACE,'slower':pygame.K_MINUS,'faster':pygame.K_EQUALS,
+                   'save':pygame.K_F5,'load':pygame.K_F9,'help':pygame.K_F1}[clicked]
             return handle_event(pygame.event.Event(pygame.KEYDOWN, key=key), simulation, ticker, renderer)
         renderer.select_at(event.pos, simulation)
-    if event.type == pygame.MOUSEWHEEL and renderer and renderer.history_open:
+    if event.type == pygame.MOUSEWHEEL and renderer and renderer.world_history_open:
+        renderer.news_page = max(0,renderer.news_page-event.y)
+    elif event.type == pygame.MOUSEWHEEL and renderer and renderer.history_open:
         renderer.history_page = max(0,renderer.history_page-event.y)
     elif event.type == pygame.MOUSEWHEEL and renderer and renderer.inspector_tab == "Memory":
         renderer.memory_page = max(0, renderer.memory_page-event.y)
@@ -673,6 +731,10 @@ def handle_event(event, simulation, ticker, renderer=None) -> bool:
             renderer.debug = not renderer.debug
         if event.key == pygame.K_c and renderer:
             renderer.history_open = not renderer.history_open
+            renderer.world_history_open = False
+        if event.key == pygame.K_n and renderer:
+            renderer.world_history_open = not renderer.world_history_open
+            renderer.history_open = False
         if event.key == pygame.K_s and renderer and renderer.debug:
             renderer.social_debug = not renderer.social_debug
             renderer.plan_debug = False
@@ -693,6 +755,7 @@ def handle_event(event, simulation, ticker, renderer=None) -> bool:
 
 def advance_frame(renderer, ticker, simulation, elapsed):
     """Split one frame at logical tick boundaries, retaining continuous walk phase."""
+    renderer.notification_seconds = max(0,renderer.notification_seconds-elapsed)
     if renderer.participant_ui.menu or simulation.input_blocked:
         renderer.participant_ui.stop(simulation)
         if simulation.input_blocked:
@@ -715,12 +778,11 @@ def advance_frame(renderer, ticker, simulation, elapsed):
     renderer.advance_animation(remainder, simulation.paused, speed=ticker.speed)
 
 
-def run(simulation: Simulation, animation_fps=8.0) -> None:
+def run(simulation: Simulation, animation_fps=8.0, window_scale=1.0) -> None:
     try:
-        renderer = Renderer(animation_fps)
+        renderer = Renderer(animation_fps,window_scale)
         renderer.sync_characters(simulation)
-        if simulation.player:
-            renderer.selected_id = simulation.player.agent_id
+        renderer.selected_id = simulation.player.agent_id if simulation.player else simulation.selected_id
         ticker = FixedTicker()
         clock = pygame.time.Clock()
         running = True

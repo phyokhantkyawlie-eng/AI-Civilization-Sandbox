@@ -1,4 +1,4 @@
-# Development guide — offline activity/hunting fixes Stage 4.5
+# Development guide — offline Participant Mode Stage 5
 
 ## Direction and launch
 
@@ -27,7 +27,7 @@ For a new environment, use Python 3.12 and install `requirements.txt` from avail
 | Social | `social.py`: addressed expiring requests, nearby validation, transfers/refusals, directed trust consequences and bounded memory. Read history only through memory-enabled accessors. |
 | Presentation | `rendering.py`, `animation.py`, `sprites.py`, `feedback.py`, `ui_state.py`: cached art, render-only interpolation, inspector, controls and event-driven notices. Visual coordinates never update logical positions. |
 | Persistence/evaluation | Social JSON saves on clean exit; invalid history is preserved. Experiments use fresh providers, RNGs and no normal save path. `results.py` reads genuine exports and makes charts. |
-| Wildlife / player controller | `wildlife.py`: chicken FSM, finite population, claims/deadlines. Updated once by Simulation in the same world. Human controller remains future work. |
+| Wildlife / player controller | `wildlife.py`: chicken FSM, finite population, claims/deadlines. Updated once by Simulation in the same world. player.py supplies human action choices for exactly one existing Agent; ParticipantUI routes in-game input to it. |
 
 All providers return the existing frozen Action model: MOVE_TO, GATHER, EAT, REST, WAIT, REQUEST_FOOD, SHARE_FOOD, REFUSE_REQUEST, TALK, OFFER_FOOD, HUNT, COOK. EAT optionally names an edible item; Agent.food remains the berries compatibility view. Do not bypass validation for a new decision source. Invalid actions must have no effects and receive a safe WAIT fallback. Decision explanations are public summaries, never unexecuted dialogue.
 
@@ -43,7 +43,7 @@ All providers return the existing frozen Action model: MOVE_TO, GATHER, EAT, RES
 
 ## Gaps to preserve for later survival stages
 
-Temporary incapacitation and timed recovery now exist, but no death/health model does, so mortality/survival metrics remain unavailable. Berries and cooked chicken are edible; raw chicken must be cooked. A human decision controller remains future work. Social history persists, but physical world/inventory state is not a full game save. Rules use full-map resource knowledge, unlike the local structured adapter context. Utility ranking now covers survival and social goals with bounded multistep queues. It is a lightweight task planner, not a general-purpose search over arbitrary world states. Corridor yielding deliberately permits temporary tile overlap after three blocked ticks. Resource/social/event histories are bounded audit windows, not unlimited archives. These remain limitations after Stage 1.
+Temporary incapacitation and timed recovery now exist, but no death/health model does, so mortality/survival metrics remain unavailable. Berries and cooked chicken are edible; raw chicken must be cooked. Participant Mode now controls one existing agent through the same scheduler; Observer Mode remains the experiment default. Social history persists, but physical world/inventory state is not a full game save. Rules use full-map resource knowledge, unlike the local structured adapter context. Utility ranking now covers survival and social goals with bounded multistep queues. It is a lightweight task planner, not a general-purpose search over arbitrary world states. Corridor yielding deliberately permits temporary tile overlap after three blocked ticks. Resource/social/event histories are bounded audit windows, not unlimited archives. These remain limitations after Stage 1.
 
 ## Verification and future changes
 
@@ -122,3 +122,17 @@ See STAGE4_CONVERSATIONS.md for settings, measured outcomes and limitations. The
 HUNT_FOOD utility includes hunger/nutrition, numeric curiosity/risk, pursuit cost, cooking travel/wait and available berry alternatives. On new eligible goal selection only, the provider samples uniform −12 to +26 utility units using the seeded simulation RNG; debug utilities record that component. A retained plan does not sample again. A five-second eligibility check interval and existing 40-second hunt cooldown prevent retry thrashing. Carried meals/raw ingredients, energy, bounded local pursuit and cooking access still gate hunting. Claim/reward/FSM/cooking rules are unchanged. Hunt selections create PLAN audit events; no spawn event commands a goal. The previous Stage 2/3 scarcity-only policy is historical.
 
 See STAGE4_5_ACTIVITY_HUNTING.md for actual observations and limitations. Pre-change recovery: commit 3277b36. Preserve private histories and original art.
+
+## Stage 5 control ownership
+
+Simulation owns optional PlayerController; Agent identity and physical state are never duplicated. `set_participant(id)` cancels unfinished activities/leases/sessions, interrupts old provider plans and clears input, then assigns that same existing ID. `set_participant()` returns to Observer Mode. Do not retain simultaneous human and autonomous goals for one agent. Cached mock/rule plans must support interruption at handoff.
+
+Only the source of Action choices changes. PlayerController returns Action or WAIT; Simulation sends it through the same occupancy, hunger cadence, ActionProgress and shared executor. The controlled agent skips autonomous decide/on_action_result and policy emergency interruptions; actual incapacitation and forced recovery still apply and clear input. The other three keep the existing provider. The human may cancel unfinished work explicitly, preserving uncommitted ingredients/resources. Never mutate inventory/positions from UI code.
+
+ParticipantUI is a Pygame-only helper for mode cards, context actions, inspection and inventory. It reads authoritative state and submits Actions. It caches original-art previews/overlay, clears held directions on menus/focus loss, and prevents stale menu layouts from executing clicks. Normal HUD inspection stays on the player; F3 retains developer inspection. Contexts are nearby physical objects; choosing an unavailable action gives feedback and cannot bypass validation.
+
+Incoming new TALK/OFFER_FOOD/REQUEST_FOOD actions targeting the human pause for consent before starting. Accepting stores one bounded action, revalidated in the next simulation tick; it never executes from UI. Greet-back/accept-and-thank choices authorize the existing authored turns, not autonomous decisions. After an actual addressed request completes its question, share/refuse uses the real request ID and common social executor. Player-initiated actions and AI responses to them retain normal rules. Temporary invitations alone produce no speech or food. A remote approach cannot freeze the human before consent.
+
+Menus and pending-response prompts suspend the shared fixed-tick world transparently; they do not accumulate a catch-up backlog. Prompt reading/countdown uses real UI seconds independent of speed, and explicit pause freezes it. After 30 unpaused real seconds, cancellation releases sessions and records an actual zero-trust-change cancellation, never an invented answer/transfer. No real-time waits run in Simulation. Headless CLI/experiments stay Observer Mode; programmatic controller tests call submit/answer/advance_prompt explicitly. Participant mode/session/input is transient and not added to social JSON persistence.
+
+See STAGE5_PARTICIPANT.md. Pre-change recovery commit: 422f618. Preserve existing original/normalized assets, private .env and normal social histories.

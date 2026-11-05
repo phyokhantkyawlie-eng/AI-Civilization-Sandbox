@@ -4,7 +4,23 @@ CSC472 Artificial Intelligence final project for a two-student team. **Animated 
 
 
 
-## Current fixes — Stage 4.5: local indicators and conditional hunting
+## Current gameplay — Stage 5: Participant Mode
+
+Choose **Observer Mode** (all four autonomous) or control one existing character in **Participant Mode**. Press **M** for the in-game mode/character menu, with original artwork, personalities and roles. Switching keeps the same world, four Agent objects, inventories, needs, trust and memories. Unfinished tasks are canceled safely and stale input/plans clear.
+
+```bash
+python -m civsandbox --mode participant --character mira --provider rule-based --seed 7
+python -m civsandbox --mode observer --provider rule-based --scenario food_shortage --seed 7
+```
+
+Participant controls: **WASD/arrows** move on the shared grid; **E** opens nearby actions/inspection; **I** opens inventory, eating and rest; **Backspace** cancels unfinished activity; **Esc** closes menus; **M** switches character/mode; **Space** pauses; **−/+** changes speed. Use the mouse or numbered choices in menus, and scroll long action lists. The normal HUD follows your character. In F3 debug view the existing inspection shortcuts retain priority.
+
+The other three NPCs remain autonomous. Human commands use the same validators, durations, occupancy, inventory, hunting/cooking and recovery rules. Incoming invitations require explicit consent. Food requests get a separate share/refuse choice after the actual question. Menus pause the shared world; unanswered prompts cancel after 30 unpaused real seconds without transferring food or inventing a refusal. Accepted greeting/thanks templates are authored offline and correspond to the selected choice. No external API is used.
+
+Verification: **312 passed, 1 skipped**; four isolated Observer trials exported successfully. Headless experiments remain Observer Mode. Participant CLI launch requires graphics; automated controller tests remain headless. See [STAGE5_PARTICIPANT.md](STAGE5_PARTICIPANT.md) for architecture, tests, controls, timeout policy and manual checks. Earlier stage notes below are historical.
+
+## Activity/hunting baseline — Stage 4.5
+
 
 Activity cards now use each frame's interpolated sprite rectangle, stay directly above their owner, hide during travel or crowding, and never draw connector lines. Active dialogue takes priority; its session pacing and history are preserved. Superseded/expired activities cannot remain as floating work labels.
 

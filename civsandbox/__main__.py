@@ -15,7 +15,11 @@ def main():
     parser.add_argument("--scenario", choices=("default", "food_shortage"), default="default")
     parser.add_argument("--provider", choices=["mock", "rule-based"])
     parser.add_argument("--animation-fps", type=float, default=8.0)
+    parser.add_argument('--mode', choices=('observer', 'participant'), default='observer')
+    parser.add_argument('--character', choices=('mira', 'nyra', 'kairo', 'ren'), default='mira')
     args = parser.parse_args()
+    if args.headless and args.mode == 'participant':
+        parser.error('Headless CLI uses Observer Mode; Participant Mode requires interactive input')
     if not math.isfinite(args.animation_fps) or args.animation_fps <= 0:
         parser.error("--animation-fps must be finite and positive")
     if args.ticks < 0:
@@ -29,6 +33,9 @@ def main():
     if not memory_path.is_absolute():
         memory_path = Path(__file__).resolve().parent.parent / memory_path
     simulation = Simulation(args.seed, create_provider(settings), settings.memory_enabled, memory_path, scenario=args.scenario, timing=settings.action_timing, day_clock=settings.day_clock, survival=settings.survival, wildlife_settings=settings.wildlife, social_settings=settings.social)
+    if args.mode == 'participant':
+        from .characters import CHARACTERS
+        simulation.set_participant(next(key for key, (_, art) in CHARACTERS.items() if art == args.character))
     try:
         if args.headless:
             for _ in range(args.ticks):

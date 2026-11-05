@@ -47,6 +47,11 @@ def activity(agent, simulation):
               "WAIT": "Looking for food", "TALK": "Greeting",
               "REQUEST_FOOD": "Asking for food", "SHARE_FOOD": "Sharing berries",
               "REFUSE_REQUEST": "Declining a request"}
+    if simulation.player and simulation.player.agent_id == agent.id:
+        if agent.current_action == 'WAIT':
+            return 'Waiting for your input'
+        if agent.current_action == 'MOVE_TO':
+            return 'Walking'
     if agent.current_action == "MOVE_TO":
         return "Walking to berries" if agent.goal and agent.goal.purpose == "food" else "Walking to destination"
     return labels.get(agent.current_action, "Looking around")

@@ -5,6 +5,7 @@ from .simulation import FixedTicker, Simulation
 from .world import Tile
 from .animation import SpriteAnimator, CharacterView
 from .feedback import Feedback
+from .participant_ui import ParticipantUI
 from .characters import CHARACTERS
 from .inventory import ITEM_NAMES
 from .ui_state import activity, hunger_status, energy_status, StatusThresholds
@@ -44,6 +45,7 @@ class Renderer:
         self.character_rects = {}
         self.chicken_rects = {}
         self.feedback = Feedback()
+        self.participant_ui = ParticipantUI()
         self.ground_cache = {}
         self.lighting_cache = {}
         self.name_labels = {}
@@ -55,6 +57,8 @@ class Renderer:
         self.screen.blit((self.title if title else self.font).render(text, True, color), position)
 
     def draw(self, simulation, ticker):
+        if simulation.player and not self.debug:
+            self.selected_id = simulation.player.agent_id
         self.screen.fill((24, 34, 39))
         pygame.draw.rect(self.screen, (35, 49, 54), (892, 74, 204, 666), border_radius=10)
         pygame.draw.rect(self.screen, (123, 110, 77), self.map_rect.inflate(6, 6), 3, border_radius=4)
@@ -223,6 +227,7 @@ class Renderer:
             self.draw_friendly_panel(simulation, ticker)
             self.draw_conversation_panel(simulation)
         self.draw_controls(simulation)
+        self.participant_ui.draw(self, simulation)
         pygame.display.flip()
 
 
@@ -278,7 +283,7 @@ class Renderer:
             pygame.draw.rect(self.screen, (70, 91, 89), rect, border_radius=5)
             self.screen.blit(self.small.render(label, True, (245, 230, 191)), (x+10, 682))
             self.control_buttons[key] = rect
-        self.screen.blit(self.small.render("Space / arrows / Esc", True, (179, 197, 192)), (900, 716))
+        self.screen.blit(self.small.render("Space / +/- / M: modes", True, (179, 197, 192)), (900, 716))
 
     def draw_bar(self, title, value, description, color, y):
         self.text(title, (906, y))
@@ -323,7 +328,7 @@ class Renderer:
                 self.text(f"{ITEM_NAMES[item]} × {quantity}", (906, 393+row*18), (226, 179, 161))
             if not actor.inventory.used:
                 self.text("Empty", (906, 397), (193, 205, 181))
-            goal = actor.goal.purpose.title() if actor.goal else "Reevaluating"
+            goal = actor.goal.purpose.title() if actor.goal else ("Choose an action" if simulation.player and simulation.player.agent_id == actor.id else "Reevaluating")
             self.screen.blit(self.small.render(f"Goal: {goal}", True, (193, 205, 181)), (906, 350))
             self.screen.blit(self.small.render(actor.personality_name, True, (193, 205, 181)), (906, 451))
         elif self.selected_bush is not None:
@@ -647,10 +652,12 @@ class Renderer:
 
 def handle_event(event, simulation, ticker, renderer=None) -> bool:
     """Return False when the user requests exit."""
+    if renderer and renderer.participant_ui.handle(event, simulation, renderer):
+        return True
     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and renderer:
         clicked = next((key for key, rect in renderer.control_buttons.items() if rect.collidepoint(event.pos)), None)
         if clicked:
-            key = {"pause": pygame.K_SPACE, "slower": pygame.K_DOWN, "faster": pygame.K_UP}[clicked]
+            key = {"pause": pygame.K_SPACE, "slower": pygame.K_MINUS, "faster": pygame.K_EQUALS}[clicked]
             return handle_event(pygame.event.Event(pygame.KEYDOWN, key=key), simulation, ticker, renderer)
         renderer.select_at(event.pos, simulation)
     if event.type == pygame.MOUSEWHEEL and renderer and renderer.history_open:
@@ -677,15 +684,24 @@ def handle_event(event, simulation, ticker, renderer=None) -> bool:
             renderer.inspector_tab = tabs[(tabs.index(renderer.inspector_tab)+1) % len(tabs)]
         if event.key == pygame.K_SPACE:
             simulation.paused = not simulation.paused
-        elif event.key in (pygame.K_UP, pygame.K_DOWN):
+        elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_MINUS, pygame.K_EQUALS):
             index = ticker.speeds.index(ticker.speed)
-            delta = 1 if event.key == pygame.K_UP else -1
+            delta = 1 if event.key in (pygame.K_UP, pygame.K_EQUALS) else -1
             ticker.speed = ticker.speeds[max(0, min(len(ticker.speeds)-1, index+delta))]
     return True
 
 
 def advance_frame(renderer, ticker, simulation, elapsed):
     """Split one frame at logical tick boundaries, retaining continuous walk phase."""
+    if renderer.participant_ui.menu or simulation.input_blocked:
+        renderer.participant_ui.stop(simulation)
+        if simulation.input_blocked:
+            if not simulation.paused:
+                simulation.player.advance_prompt(elapsed, simulation)
+            renderer.feedback.advance_reading(elapsed, paused=simulation.paused)
+        renderer.advance_animation(0, True)
+        ticker.accumulator = 0
+        return
     until_tick = ticker.interval - ticker.accumulator
 
     def completed_tick(state):
@@ -703,6 +719,8 @@ def run(simulation: Simulation, animation_fps=8.0) -> None:
     try:
         renderer = Renderer(animation_fps)
         renderer.sync_characters(simulation)
+        if simulation.player:
+            renderer.selected_id = simulation.player.agent_id
         ticker = FixedTicker()
         clock = pygame.time.Clock()
         running = True

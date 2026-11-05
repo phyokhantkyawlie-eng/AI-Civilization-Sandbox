@@ -109,6 +109,8 @@ class SocialSystem:
         return bool(session and session.state in (SessionState.ENGAGED, SessionState.WAITING_FOR_PARTNER, SessionState.RESOLVING))
 
     def waiting_partner(self, actor):
+        if actor.id == getattr(self, 'human_id', None):
+            return False  # A proposal cannot freeze a human before consent.
         session = self.session_for(actor)
         return bool(session and session.state == SessionState.APPROACHING
                     and session.recipient_id == actor.id and self.available(actor,session))
@@ -283,14 +285,14 @@ class SocialSystem:
                    and self.tick-m['tick'] < self.settings.avoid_ticks
                    for m in self.relevant_memories(actor,{peer_id}))
 
-    def cancel_for(self, agent):
+    def cancel_for(self, agent, reason=None):
         session = self.session_for(agent)
         if session:
-            self.cancel_session(session.id, 'partner recovering')
+            self.cancel_session(session.id, reason or 'partner recovering')
         for request in list(self.active_requests(agent)):
             del self.pending[request.id]
             self.record(request.requester_id, request.recipient_id, "REQUEST_FOOD",
-                        "cancelled: incapacitated", {}, request.id)
+                        "canceled: "+reason if reason else "cancelled: incapacitated", {}, request.id)
 
     def trust_for(self, agent, other_id):
         return agent.trust.get(other_id, 0) if self.memory_enabled else 0

@@ -18,6 +18,7 @@ from .occupancy import Occupancy
 from .daynight import DayClock
 from .survival import SurvivalRules
 from .pacing import ActionProgress, ActionTiming
+from .player import PlayerController
 
 
 class Simulation:
@@ -71,13 +72,40 @@ class Simulation:
         self._event_sequence = 0
         self.tick = 0
         self.paused = False
+        self.player = None
+
+    def set_participant(self, agent_id=None):
+        """Hand off existing identities without changing physical state or history."""
+        if agent_id is not None and agent_id not in self.social.agents:
+            raise ValueError('Unknown participant character')
+        old = self.player
+        if old:
+            if old.pending:
+                old.decline(self, old.pending, 'Mode changed; interaction canceled')
+            old.clear()
+            old.pending = old.approved = old.responding_request = None
+        for key in {old.agent_id if old else None, agent_id} - {None}:
+            actor = self.social.agents[key]
+            self.progress.cancel_for(key)
+            self.social.cancel_for(actor, "Control handoff")
+            if hasattr(self.decision_provider, 'interrupt'):
+                self.decision_provider.interrupt(actor, 'Control handoff', self.tick)
+            actor.goal = None
+            actor.current_action = 'WAIT'
+            self.progress.sources.pop(key, None)
+        self.player = PlayerController(agent_id) if agent_id else None
+        self.social.human_id = agent_id
+
+    @property
+    def input_blocked(self):
+        return bool(self.player and self.player.pending)
 
     @property
     def time_of_day(self):
         return self.clock.at(self.tick)
 
     def step(self) -> None:
-        if self.paused:
+        if self.paused or self.input_blocked:
             return
         self.tick += 1
         self.resources.replenish(self.tick)
@@ -96,6 +124,9 @@ class Simulation:
                     self.decision_provider.interrupt(agent, "Temporary survival recovery", self.tick)
                 if transition == "incapacitated":
                     self.social.cancel_for(agent)
+                    if self.player and self.player.agent_id == agent.id:
+                        self.player.clear()
+                        self.player.message = 'Temporarily incapacitated; recovering under normal rules.'
                 self.events.append({"tick": self.tick, "agent": agent.name, "actor_id": agent.id,
                                     "action": "SURVIVAL", "result": transition})
         if hasattr(self.decision_provider, "begin_tick"):
@@ -124,8 +155,9 @@ class Simulation:
                     if sum(abs(x-y) for x,y in zip(position, agent.position)) <= 4)
                 context_summary["resource_scope"] = (
                     "full map for rule policy" if not hasattr(self.decision_provider, "name") else "local")
+            is_player = bool(self.player and self.player.agent_id == agent.id)
             active_job = self.progress.jobs.get(agent.id)
-            if active_job and hasattr(self.decision_provider, 'should_interrupt') and self.decision_provider.should_interrupt(agent,active_job.action):
+            if active_job and not is_player and hasattr(self.decision_provider, 'should_interrupt') and self.decision_provider.should_interrupt(agent,active_job.action):
                 self.progress.cancel_for(agent.id)
                 self.decision_provider.interrupt(agent,'Emergency interrupted an activity',self.tick)
                 active_job=None
@@ -136,8 +168,14 @@ class Simulation:
                 action = active_job.action
             elif self.progress.held(agent) and not self.social.needs_response(agent):
                 action = Action(ActionType.WAIT)
+            elif self.player and self.player.approved and self.player.approved[0] == agent.id:
+                action = self.player.approved[1]
+            elif is_player:
+                action = self.player.decide(agent, self.world, self.resources, self.rng)
             else:
                 action = self.decision_provider.decide(agent, self.world, self.resources, self.rng)
+            if self.player and not active_job and self.player.intercept(action, agent, self):
+                action = Action(ActionType.WAIT, reasoning='Waiting for human consent')
             requested_action = action
             proposed_action = action.kind.value if isinstance(action, Action) and isinstance(action.kind, ActionType) else "invalid"
             rejected = False
@@ -151,8 +189,8 @@ class Simulation:
                         next_position = self.occupancy.next_step(agent, action.target, self.world, self.agents,
                                                                  [c.position for c in self.wildlife.living()])
                         action = Action(ActionType.MOVE_TO, next_position, action.reasoning) if next_position else Action(ActionType.WAIT)
-            decision_source = getattr(self.decision_provider, "name", "rule-based")
-            status = getattr(self.decision_provider, "status", {}).get(agent.id, {})
+            decision_source = "player" if is_player else getattr(self.decision_provider, "name", "rule-based")
+            status = {} if is_player else getattr(self.decision_provider, "status", {}).get(agent.id, {})
             if status.get("fallback"):
                 decision_source = "rule-based"
             previous = agent.current_action
@@ -166,7 +204,9 @@ class Simulation:
                 agent.goal = None
                 action = Action(ActionType.WAIT)
                 execute(action, agent, self.world, self.resources, self.tick, self.social)
-            if hasattr(self.decision_provider,'on_action_result') and isinstance(requested_action,Action):
+            if is_player and rejected:
+                self.player.message = 'Action rejected safely; check target, needs and resources.'
+            if not is_player and hasattr(self.decision_provider,'on_action_result') and isinstance(requested_action,Action):
                 pursuit_failed=(requested_action.kind==ActionType.HUNT and not self.progress.started
                                 and not self.progress.completed and agent.id not in self.progress.jobs)
                 self.decision_provider.on_action_result(agent,requested_action,self.progress.completed,
@@ -206,6 +246,8 @@ class Simulation:
         if hasattr(self.decision_provider, "audit_events"):
             self.events.extend(self.decision_provider.audit_events)
             self.decision_provider.audit_events.clear()
+        if self.player:
+            self.player.refresh(self)
         self.number_events()
         if self.event_limit is not None:
             del self.events[:-self.event_limit]
@@ -229,6 +271,11 @@ class Simulation:
         if self._closed:
             return
         self._closed = True
+        if self.player:
+            if self.player.pending:
+                self.player.decline(self, self.player.pending, 'Application closed; interaction canceled')
+                self.player.pending = None
+            self.player.clear()
         self.progress.cancel_all()
         self.social.close()
         self.events.extend(self.wildlife.events)
@@ -240,7 +287,9 @@ class Simulation:
             self.decision_provider.close()
 
     def snapshot(self) -> dict:
-        return {"interaction_sessions": [asdict(s) for s in self.social.sessions.values()],
+        return {"game_mode": "participant" if self.player else "observer",
+                "player_id": self.player.agent_id if self.player else None,
+                "interaction_sessions": [asdict(s) for s in self.social.sessions.values()],
                 "cooking_station": asdict(self.cooking_station), "chickens": [asdict(c) for c in self.wildlife.chickens.values()],
                 "wildlife_respawns": self.wildlife.respawns.copy(),
                 "hunt_cooldowns": self.wildlife.cooldowns.copy(),
@@ -268,13 +317,17 @@ class FixedTicker:
     def advance(self, simulation: Simulation, elapsed: float, on_step=None) -> int:
         if not math.isfinite(elapsed) or elapsed < 0:
             raise ValueError("Elapsed time must be finite and nonnegative")
-        if simulation.paused:
+        if simulation.paused or simulation.input_blocked:
             return 0
         self.accumulator += elapsed * self.speed
         count = int((self.accumulator + 1e-12) / self.interval)
+        completed = 0
         for _ in range(count):
+            if simulation.input_blocked:
+                break
             simulation.step()
+            completed += 1
             if on_step is not None:
                 on_step(simulation)
-        self.accumulator = max(0.0, self.accumulator - count * self.interval)
-        return count
+        self.accumulator = 0.0 if simulation.input_blocked else max(0.0, self.accumulator - completed * self.interval)
+        return completed

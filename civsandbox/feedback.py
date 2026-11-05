@@ -5,7 +5,7 @@ from collections import deque
 ANIMATION_STATES = ("idle", "walk", "gather", "eat", "rest", "talk", "share", "cook")
 ACTION_STATES = {"COOK": "cook", "HUNT": "idle", "GATHER": "gather", "EAT": "eat", "REST": "rest",
                  "REQUEST_FOOD": "talk", "REFUSE_REQUEST": "talk", "TALK": "talk", "SHARE_FOOD": "share"}
-LABELS = {"COOK": "Cooked chicken", "HUNT": "Collected raw chicken", "GATHER": "Gathered food", "EAT": "Ate food", "REST": "Resting",
+LABELS = {"COOK": "Cooked", "HUNT": "Hunted", "GATHER": "Gathered", "EAT": "Ate", "REST": "Resting",
           "REQUEST_FOOD": "Asked for food", "SHARE_FOOD": "Shared food",
           "REFUSE_REQUEST": "Refused", "TALK": "Greeting"}
 
@@ -61,6 +61,10 @@ class Feedback:
         session = self.social.session_for(actor) if actor else None
         if not session or session.id != entry['session_id'] or not self.social.engaged(actor):
             return None
+        partner_id = next(key for key in session.participants if key != actor.id)
+        partner = self.social.agents[partner_id]
+        if self.social.session_for(partner) is not session or not self.social.nearby(actor, partner):
+            return None
         return Notice(actor.id,'',entry['text'],'','talk',self.clock+1,session.id)
 
     def consume(self, events, social=None):
@@ -97,14 +101,14 @@ class Feedback:
                     self.notices[(recipient,'reaction')]=Notice(recipient,'','','Happy','idle',self.clock+self.lifetime)
                 continue
             previous = self.notices.get(actor)
-            if previous and previous.state == "rest" and action != "REST" and event.get("executed"):
+            if previous and (event.get("executed") or event.get("accepted_start")) and ACTION_STATES.get(action) != previous.state:
                 self.notices.pop(actor, None)
             if (event.get("executed") or event.get("accepted_start")) and action in LABELS:
                 # Keep sustained rest unobtrusive; each rest transition gets one notice.
                 if action == "REST" and not event.get("changed"):
                     continue
                 speech = ""
-                label = {"COOK": "Cooking chicken", "HUNT": "Pursuing chicken", "GATHER": "Gathering berries", "EAT": "Eating"}.get(action, LABELS[action]) if event.get("accepted_start") else LABELS[action]
+                label = {"COOK": "Cooking", "HUNT": "Hunting", "GATHER": "Gathering", "EAT": "Eating"}.get(action, LABELS[action]) if event.get("accepted_start") else LABELS[action]
                 self.notices[actor] = Notice(actor, label, speech, "",
                                              ACTION_STATES[action], self.clock+max(self.lifetime, event.get("duration_seconds", 0)))
 

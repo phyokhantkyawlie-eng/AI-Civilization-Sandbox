@@ -214,12 +214,12 @@ def test_policy_ignores_well_fed_exhausted_stocked_or_cautious_distant_agents():
     assert RuleBasedDecisionProvider().hunting_choice(a,sim.world,sim.resources) is None
 
 
-def test_nearby_available_berries_and_useful_food_goal_beat_hunting():
+def test_nearby_berries_do_not_veto_an_eligible_hunt():
     sim,a,c,_=hunt_fixture()
     bush=next(iter(sim.resources.bushes.values()))
     a.position=sim.world.neighbors(bush.position)[0]
     c.position=next(p for p in sim.world.neighbors(a.position) if p!=a.position)
-    assert RuleBasedDecisionProvider().hunting_choice(a,sim.world,sim.resources) is None
+    assert RuleBasedDecisionProvider().hunting_choice(a,sim.world,sim.resources).kind == ActionType.HUNT
 
 
 def test_spawning_never_triggers_hunting_in_satisfied_population():
@@ -334,7 +334,7 @@ def test_rendered_chickens_have_states_and_disappear_on_validated_hunt():
         r.selected_id=a.id
         r.draw(sim,FixedTicker())
         assert c.id not in r.chicken_rects
-        assert r.feedback.notices[a.id].label=='Collected raw chicken'
+        assert r.feedback.notices[a.id].label=='Hunted'
     finally:
         sim.close();pygame.quit()
 

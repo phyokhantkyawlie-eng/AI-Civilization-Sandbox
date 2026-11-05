@@ -19,7 +19,7 @@ def test_only_committed_actions_show_and_expire_without_replay():
     actual=event(2)
     actual['action']='GATHER'
     f.consume([actual])
-    assert f.notices['npc-1'].label=='Gathered food' and not f.notices['npc-1'].speech
+    assert f.notices['npc-1'].label=='Gathered' and not f.notices['npc-1'].speech
     f.advance(3)
     f.consume([actual])
     assert not f.notices
@@ -61,7 +61,7 @@ def test_bubble_layout_stays_inside_map_and_avoids_overlap():
     s = Simulation()
     try:
         r = Renderer()
-        s.agents[0].position = s.agents[1].position = (0, 0)
+        s.agents[0].position = s.agents[1].position = (5, 5)
         r.draw(s, __import__("civsandbox.simulation", fromlist=["FixedTicker"]).FixedTicker())
         first=event()
         first["action"]="GATHER"
@@ -73,9 +73,10 @@ def test_bubble_layout_stays_inside_map_and_avoids_overlap():
         r.feedback.consume(events)
         r.draw_feedback()
         bounds = pygame.Rect(20, 78, 864, 648)
-        assert len(r.feedback_rects) == 2
+        assert len(r.feedback_rects) == 1  # Crowded secondary labels are hidden locally.
         assert all(bounds.contains(rect) for rect in r.feedback_rects)
-        assert not r.feedback_rects[0].colliderect(r.feedback_rects[1])
+        assert all(not first.colliderect(second) for i, first in enumerate(r.feedback_rects)
+                   for second in r.feedback_rects[i+1:])
     finally:
         s.close()
         pygame.quit()

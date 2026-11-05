@@ -1,4 +1,4 @@
-# Development guide — offline social encounters Stage 4
+# Development guide — offline activity/hunting fixes Stage 4.5
 
 ## Direction and launch
 
@@ -83,7 +83,7 @@ Stage 1 verification: 188 passed, 1 skipped, 0 failures; two 4,800-tick seeded o
 
 HUNT targets a chicken ID, not a coordinate or NPC. Shared validation distinguishes offered high-level eligibility from final timed/proximity validation. The existing ActionProgress holds the actor reservation, maintains a bounded Pursuit, replans through the existing BFS/Occupancy and moves via the existing MOVE_TO executor. Chicken movement can break the catch window. Completion alone transfers one raw item and marks the chicken dead; claims, deadlines, cooldowns and cancellation prevent duplicated rewards. Generic ACTIVITY events identify accepted pursuits; one completed HUNT event records the reward, and one HUNT_FAILED event records each abandoned attempt. Observation views offer visible IDs only and cannot execute final hunts.
 
-Conditional rule utility combines hunger, curiosity, risk and travel cost. It never reads spawn events, character names, social histories when disabled, or hidden target positions outside the six-tile hunting perception range. Existing berry planning retains its documented full-map knowledge. A reachable nearby berry approach (within 6 + floor(4×risk) steps) prevents hunting. Candidate travel is bounded by floor(7 − 4×risk) steps; score must be at least .35. A five-second decision-check interval and 40-second post-attempt cooldown bound reconsideration. No new character scripts exist.
+Conditional rule utility combines hunger, curiosity, risk and travel cost. It never reads spawn events, character names, social histories when disabled, or hidden target positions outside the six-tile hunting perception range. Existing berry planning retains its documented full-map knowledge. Stage 4.5 replaces the old nearby-berry veto with a utility penalty, so a stocked bush does not forbid hunting. Candidate travel is bounded by floor(7 − 4×risk) steps; eligibility score must be at least .25, hunger at least the configured hungry threshold, with no carried edible food/raw reserve and a reachable cooking station. A five-second decision-check interval and 40-second post-attempt cooldown bound reconsideration. No new character scripts exist.
 
 Raw chicken uses the existing Inventory and item registry with zero hunger reduction. Agent.food remains exclusively berries; neither eating nor social food sharing consumes raw meat. One raw reserve prevents pointless repeated hunting before Stage 3 cooking exists. Do not invent cooking, illness or raw-meat hunger benefits in Stage 2. Physical wildlife/inventory state is not persisted by the existing social-history save.
 
@@ -114,3 +114,11 @@ Only delivered DIALOGUE events from a real accepted session enter Feedback. Neve
 Use guarded `trust_for` and `relevant_memories` for choices and templates, including avoidance. Cooldowns/repetition are interaction pacing in both memory conditions; they do not expose historical trust. Relevant past help must come from an actual earlier transfer. Do not invent disagreement, apology or gratitude outcomes. New voluntary OFFER_FOOD transfers one existing berry and uses the same validation/capacity rules as responses.
 
 See STAGE4_CONVERSATIONS.md for settings, measured outcomes and limitations. The pre-Stage-4 recovery commit is `02ab707`; normal private saves and original art remain intact.
+
+## Stage 4.5 presentation and food-goal conventions
+
+`Renderer.draw_feedback` derives card geometry from current `character_rects`, which are rebuilt from interpolated CharacterView positions each frame. No world-wide layout search, cached screen anchor or connector line is permitted. Keep activity labels compact, hide them during visual movement/offscreen/overlap, prioritize accepted speech, and keep history independent. Feedback clears superseded activity notices and rechecks live session proximity before showing speech. Do not change authoritative simulation coordinates to place UI.
+
+HUNT_FOOD utility includes hunger/nutrition, numeric curiosity/risk, pursuit cost, cooking travel/wait and available berry alternatives. On new eligible goal selection only, the provider samples uniform −12 to +26 utility units using the seeded simulation RNG; debug utilities record that component. A retained plan does not sample again. A five-second eligibility check interval and existing 40-second hunt cooldown prevent retry thrashing. Carried meals/raw ingredients, energy, bounded local pursuit and cooking access still gate hunting. Claim/reward/FSM/cooking rules are unchanged. Hunt selections create PLAN audit events; no spawn event commands a goal. The previous Stage 2/3 scarcity-only policy is historical.
+
+See STAGE4_5_ACTIVITY_HUNTING.md for actual observations and limitations. Pre-change recovery: commit 3277b36. Preserve private histories and original art.

@@ -4,7 +4,16 @@ CSC472 Artificial Intelligence final project for a two-student team. **Animated 
 
 
 
-## Current gameplay — Stage 4: natural social encounters
+## Current fixes — Stage 4.5: local indicators and conditional hunting
+
+Activity cards now use each frame's interpolated sprite rectangle, stay directly above their owner, hide during travel or crowding, and never draw connector lines. Active dialogue takes priority; its session pacing and history are preserved. Superseded/expired activities cannot remain as floating work labels.
+
+Hunting now competes with gathering when berries are available. Local targets, hunger, energy, carried meals, practical cooking access, pursuit/travel cost, berry alternatives and personality still constrain selection. A bounded seeded utility adjustment is sampled only for a new eligible goal; retained hunting/cooking plans do not resample. Existing wildlife, claims, timed hunting, conversion and inventory validation remain intact.
+
+Verification: **284 passed, 1 skipped**. Ten seeded offline 4,800-tick runs produced 10 hunts, 10 successes and 9 cooking completions, all in shortage scenarios; four hunt selections had available berries. The well-supplied village produced no hunts. See [STAGE4_5_ACTIVITY_HUNTING.md](STAGE4_5_ACTIVITY_HUNTING.md) for actual counts, conservation checks, limits and manual visual steps. No Stage 5 features were added.
+
+## Social encounters — Stage 4
+
 
 NPCs now share bounded interaction sessions: approach → stop and face → take turns → commit a validated result → finish or cancel. Accepted offline authored lines reflect personality, needs, real inventory, guarded memories and actual outcomes. Decision explanations never become dialogue. Busy partners, conflicting conversations and urgent survival needs cancel or defer interactions safely.
 

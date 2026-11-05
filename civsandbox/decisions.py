@@ -30,7 +30,8 @@ class RuleBasedDecisionProvider:
         self.debug = {}
         self.retry_after = {}
         self.audit_events = []
-        self.stats = {"selected":0,"completed":0,"failed":0,"interrupted":0}
+        self.stats = {"selected":0,"completed":0,"failed":0,"interrupted":0,
+                      "eligible_hunt_choices":0,"hunting_selected":0}
 
     def bind_social(self, social):
         self.social = social
@@ -169,7 +170,21 @@ class RuleBasedDecisionProvider:
             cost = cook_travel[0] if cook_travel else 999
             if chase and cook_travel:
                 steps = [hunt] + [Action(ActionType.MOVE_TO, route[1]), Action(ActionType.COOK, station.id), Action(ActionType.EAT, item='cooked_chicken')]
-                add('HUNT_FOOD', hunt.target, steps, {'base': 30, 'hunger': h * 0.65, 'nutrition': ITEM_DEFINITIONS['cooked_chicken'].hunger_reduction * 0.2, 'curiosity': traits.get('curiosity', 0.5) * 10, 'risk': -risk * 35, 'pursuit': -chase[0] * 3, 'cook_travel': -cost, 'work_time': -7}, 'Scarce berries justify a bounded hunt, cooking and meal')
+                berry_costs = []
+                for bush, stock in resources.stocks().items():
+                    berry_route = self.approach(agent, bush, world) if stock else None
+                    if berry_route:
+                        berry_costs.append(berry_route[0])
+                berry_cost = min(berry_costs, default=999)
+                wait = max(0, (station.ready_tick or self.tick)-self.tick) if station.occupied_by not in (None, agent.id) else 0
+                add('HUNT_FOOD', hunt.target, steps,
+                    {'base': 36, 'hunger': h * .8,
+                     'nutrition': ITEM_DEFINITIONS['cooked_chicken'].hunger_reduction * .2,
+                     'curiosity': traits.get('curiosity', .5) * 12,
+                     'risk': -risk * 20, 'pursuit': -chase[0] * 2,
+                     'cook_travel': -cost * .7, 'work_time': -8,
+                     'berries': -max(0, 10-berry_cost), 'station_wait': -wait * .2},
+                    'Compare a bounded hunt and cooked meal against available berries')
         if self.social:
             incoming = [r for r in self.social.active_requests(agent) if r.recipient_id == agent.id]
             if incoming:
@@ -278,6 +293,13 @@ class RuleBasedDecisionProvider:
             retry = self.retry_after.get(agent.id)
             if not (emergency_eat or emergency_rest):
                 proposals = [c for c in proposals if not (retry and retry[:2] == (c.goal, c.target) and self.tick < retry[2])]
+            # Sample once when choosing a new eligible food goal, never on a
+            # retained plan, render frame or chicken-spawn event.
+            for candidate in proposals:
+                if candidate.goal == 'HUNT_FOOD':
+                    candidate.components['seeded_preference'] = rng.uniform(-12, 26)
+                    self.hunt_checks[agent.id] = self.tick+20
+                    self.stats['eligible_hunt_choices'] += 1
             ranked = sorted(proposals, key=lambda c: (-c.utility, c.goal, str(c.target)))
             debug = self.debug.setdefault(agent.id, {})
             debug['utilities'] = [{'goal': c.goal, 'score': round(c.utility, 2), 'components': c.components} for c in ranked[:5]]
@@ -312,6 +334,12 @@ class RuleBasedDecisionProvider:
                 purpose = {'GATHER_FOOD': 'food', 'HUNT_FOOD': 'hunt', 'COOK_FOOD': 'cook', 'REST': 'rest', 'SOCIALIZE': 'social', 'EXPLORE': 'explore'}.get(plan.goal, plan.goal.lower())
                 agent.goal = Goal(purpose, plan.target) if plan.target is not None else None
                 self.stats['selected'] += 1
+                if plan.goal == 'HUNT_FOOD':
+                    self.stats['hunting_selected'] += 1
+                    self.audit_events.append({'tick': self.tick, 'agent': agent.name,
+                                              'actor_id': agent.id, 'action': 'PLAN',
+                                              'result': 'selected', 'goal': plan.goal,
+                                              'target': plan.target, 'reason': plan.reason})
                 debug.update(goal=plan.goal, reason=plan.reason)
                 break
         if plan is None:
@@ -329,18 +357,16 @@ class RuleBasedDecisionProvider:
     def hunting_choice(self, agent, world, resources, commit=True):
         wildlife = getattr(resources, "wildlife", None)
         if (wildlife is None or edible_count(agent) or agent.inventory.quantity("raw_chicken")
-                or agent.hunger < max(65, self.survival.hungry)
+                or agent.hunger < self.survival.hungry
                 or agent.energy < max(40, wildlife.settings.minimum_energy+12)
                 or agent.inventory.used >= agent.inventory.capacity
                 or self.tick < self.hunt_checks.get(agent.id, 0)):
             return None
         if commit:self.hunt_checks[agent.id] = self.tick+20
         risk = agent.personality.get("risk_aversion", .5)
-        # A reachable berry patch is preferable to a risky nearby pursuit.
-        for bush, stock in resources.stocks().items():
-            if stock and any(p == agent.position or (route := world.path(agent.position, p))
-                             and len(route) <= 6+int(4*risk) for p in world.neighbors(bush)):
-                return None
+        station = getattr(resources, 'cooking_station', None)
+        if station is None or not self.approach(agent, station.position, world, True):
+            return None
         candidates = []
         for chicken in wildlife.chickens.values():
             if (not chicken.alive or sum(abs(a-b) for a,b in zip(agent.position, chicken.position)) > 6
@@ -354,13 +380,13 @@ class RuleBasedDecisionProvider:
                 continue
             score = ((agent.hunger-55)/45*.5 + agent.personality.get("curiosity", .5)*.2
                      + (1-risk)*.3 - steps*.06 - risk*.2)
-            if score >= .35:
+            if score >= .25:
                 candidates.append((-score, steps, chicken.id))
         if candidates:
             target = min(candidates)[2]
             if commit:agent.goal = Goal("hunt", target)
             return Action(ActionType.HUNT, target,
-                          "Hungry, no carried berries, scarce reachable berries; short pursuit for one raw supply.")
+                          "Hungry, no carried meals, energy and cooking access; bounded pursuit for a cooked meal.")
         return None
 
     @staticmethod

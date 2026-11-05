@@ -376,19 +376,27 @@ class Renderer:
                                  (906, 516+index*36+row*16))
 
     def draw_feedback(self):
+        """Place local cards from this frame's interpolated sprite rectangles."""
         occupied = []
-        # A single action and reaction per NPC bounds layout work to eight cards.
+        self.feedback_cards = {}
         speech = self.feedback.speech_notice()
         notices = ([speech] if speech else []) + list(self.feedback.notices.values())
         for notice in notices:
             anchor = self.character_rects.get(notice.actor_id)
-            if anchor is None:
+            if (anchor is None or notice.expires <= self.feedback.clock
+                    or not self.map_rect.collidepoint(anchor.centerx, anchor.bottom-1)):
+                continue
+            view = self.characters.get(notice.actor_id)
+            # Activity is local status, never a distant floating travel annotation.
+            if not notice.speech and view and view.animator.moving:
                 continue
             text = notice.speech or notice.label or notice.reaction
             if not text:
                 continue
-            name = CHARACTERS.get(notice.actor_id, (notice.actor_id, ""))[0]
-            words = (name+": "+text).split()
+            if notice.speech:
+                name = CHARACTERS.get(notice.actor_id, (notice.actor_id, ""))[0]
+                text = name+": "+text
+            words = text.split()
             lines, line = [], ""
             for word in words:
                 candidate = (line+" "+word).strip()
@@ -398,26 +406,20 @@ class Renderer:
                 else:
                     line = candidate
             lines.append(line)
-            lines = lines[:4]
+            lines = lines[:4] if notice.speech else lines[:1]
             width = min(216, max(self.small.size(line)[0] for line in lines)+16)
             height = len(lines)*17+12
-            bounds = pygame.Rect(20, 78, 864, 648)
-            choices = [pygame.Rect(anchor.centerx-width//2, anchor.top-height-18, width, height),
-                       pygame.Rect(anchor.centerx-width//2, anchor.bottom+8, width, height)]
-            choices += [pygame.Rect(x, y, width, height) for y in range(80, 700-height, height+4)
-                        for x in range(22, 884-width, width+4)]
-            card = None
-            for candidate in choices:
-                candidate.clamp_ip(bounds)
-                if (not any(candidate.colliderect(other.inflate(4, 4)) for other in occupied)
-                        and not any(candidate.colliderect(sprite.inflate(0, 24))
-                                    for sprite in self.character_rects.values())):
-                    card = candidate
-                    break
-            if card is None:
+            card = pygame.Rect(anchor.centerx-width//2, anchor.top-height-18, width, height)
+            card.clamp_ip(self.map_rect)
+            # Dialogue takes priority. Hide crowded secondary cards instead of
+            # searching unrelated map locations or drawing connector lines.
+            if any(card.colliderect(other.inflate(4, 4)) for other in occupied):
+                continue
+            if not notice.speech and any(card.colliderect(rect) for key, rect in
+                                         self.character_rects.items() if key != notice.actor_id):
                 continue
             occupied.append(card)
-            pygame.draw.line(self.screen, (230, 213, 163), anchor.midtop, card.center, 1)
+            self.feedback_cards[notice.actor_id] = card
             pygame.draw.rect(self.screen, (244, 234, 204), card, border_radius=6)
             pygame.draw.rect(self.screen, (120, 105, 76), card, 1, border_radius=6)
             for i, line in enumerate(lines):

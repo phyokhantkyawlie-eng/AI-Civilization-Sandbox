@@ -6,6 +6,7 @@ import random
 import threading
 import time
 
+from .inventory import ITEM_DEFINITIONS
 from .actions import Action, ActionType, SOCIAL_ACTIONS, validate
 from .agents import Goal
 from .config import Settings
@@ -21,6 +22,7 @@ DECISION_SCHEMA = {
             "type": "object", "additionalProperties": False,
             "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}},
             "required": ["x", "y"]}]},
+        "item": {"anyOf": [{"type":"null"},{"type":"string","enum":[key for key,d in ITEM_DEFINITIONS.items() if d.hunger_reduction>0]}]},
         "request_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         "reasoning": {"type": "string", "minLength": 1, "maxLength": 160},
     },
@@ -41,7 +43,7 @@ def parse_decision(raw: str, secret="") -> Action:
         raise ValueError("Invalid decision payload")
     data = json.loads(raw)
     if (not isinstance(data, dict) or not {"action", "target", "reasoning"} <= set(data)
-            or set(data)-{"action", "target", "reasoning", "request_id"}):
+            or set(data)-{"action", "target", "reasoning", "request_id", "item"}):
         raise ValueError("Malformed decision")
     if (not isinstance(data["reasoning"], str) or not 1 <= len(data["reasoning"]) <= 160
             or not data["reasoning"].strip()):
@@ -49,9 +51,12 @@ def parse_decision(raw: str, secret="") -> Action:
     kind = ActionType(data["action"])
     target = data["target"]
     request_id = data.get("request_id")
+    item=data.get("item")
+    if item is not None and (kind!=ActionType.EAT or not isinstance(item,str) or item not in ITEM_DEFINITIONS or ITEM_DEFINITIONS[item].hunger_reduction<=0):
+        raise ValueError("Invalid edible item")
     if request_id is not None and (not isinstance(request_id, str) or not request_id):
         raise ValueError("Invalid request ID")
-    if kind in SOCIAL_ACTIONS or kind == ActionType.HUNT:
+    if kind in SOCIAL_ACTIONS or kind in (ActionType.HUNT,ActionType.COOK):
         if not isinstance(target, str) or not target or len(target) > 80:
             raise ValueError("Invalid NPC target")
         if (kind in (ActionType.SHARE_FOOD, ActionType.REFUSE_REQUEST)) != (request_id is not None):
@@ -66,7 +71,7 @@ def parse_decision(raw: str, secret="") -> Action:
             target = (target["x"], target["y"])
         if (kind in (ActionType.MOVE_TO, ActionType.GATHER)) != (target is not None):
             raise ValueError("Target does not match action")
-    return Action(kind, target, safe_text(data["reasoning"], secret), request_id)
+    return Action(kind, target, safe_text(data["reasoning"], secret), request_id, item)
 
 
 @dataclass
@@ -106,6 +111,16 @@ class PlanningDecisionProvider:
     def bind_routines(self, clock, survival):
         self.rule.bind_routines(clock, survival)
 
+    def on_action_result(self, *args):
+        self.rule.on_action_result(*args)
+
+    def interrupt(self, agent, reason, tick):
+        self.rule.interrupt(agent,reason,tick)
+        self.plans.pop(agent.id,None)
+
+    def should_interrupt(self, agent, action):
+        return self.rule.should_interrupt(agent,action)
+
     def begin_tick(self, tick, agents):
         self.tick, self.agents = tick, agents
         self.rule.begin_tick(tick, agents)
@@ -133,7 +148,7 @@ class PlanningDecisionProvider:
             action = parse_decision(raw, self.settings.api_key)
         except (ValueError, TypeError, KeyError, RecursionError):
             return None, "malformed response"
-        if not any(action.kind == c.kind and action.target == c.target and action.request_id == c.request_id for c in choices):
+        if not any(action.kind == c.kind and action.target == c.target and action.request_id == c.request_id and action.item == c.item for c in choices):
             return None, "action was not an offered choice"
         if not validate(action, agent, world, resources, self.social):
             return None, "decision became invalid before execution"

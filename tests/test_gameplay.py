@@ -47,7 +47,7 @@ def test_eating_has_one_delayed_commit_and_pause_speed_are_consistent():
     assert sim.tick == 11 and actor.food == 0 and actor.hunger < 60
     for _ in range(20):
         sim.step()
-    assert sum(e["action"] == "EAT" and e["executed"] for e in sim.events) == 1
+    assert sum(e["action"] == "EAT" and e["executed"] and e.get("item", "berries") == "berries" for e in sim.events) == 1
 
 
 def test_gather_is_delayed_and_revalidated_when_bush_depletes():
@@ -91,7 +91,7 @@ def test_food_shortage_conservation_and_deterministic_paced_state():
         b.step()
     assert a.snapshot() == b.snapshot()
     gathered = sum(c.reason == "gather" for c in a.resources.changes)
-    eaten = sum(e["action"] == "EAT" and e["executed"] for e in a.events)
+    eaten = sum(e["action"] == "EAT" and e["executed"] and e.get("item", "berries") == "berries" for e in a.events)
     assert initial+gathered-eaten == sum(actor.food for actor in a.agents)
 
 

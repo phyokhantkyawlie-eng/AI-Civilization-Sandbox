@@ -46,7 +46,7 @@ class Settings:
         memory_flag = (values.get("MEMORY_ENABLED") or "true").strip().lower()
         if memory_flag not in ("true", "false"):
             raise ValueError("MEMORY_ENABLED must be true or false")
-        defaults = {"needs_interval": 1, "gather": 3.5, "eat": 2.5, "greeting": 2, "request": 2, "response": 2.5, "social_cooldown": 10, "rest": 1}
+        defaults = {"needs_interval": 1, "gather": 3.5, "eat": 2.5, "greeting": 2, "request": 2, "response": 2.5, "social_cooldown": 10, "rest": 1, "cook": 5}
         timings = {}
         for name, default in defaults.items():
             seconds = float(values.get(name.upper()+"_SECONDS", default))

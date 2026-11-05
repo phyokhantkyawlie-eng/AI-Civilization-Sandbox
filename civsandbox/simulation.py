@@ -7,6 +7,8 @@ from dataclasses import asdict
 from .actions import Action, ActionType, SOCIAL_ACTIONS, execute
 from .decisions import DecisionProvider, RuleBasedDecisionProvider
 from .resources import Resources
+from .cooking import place_station
+from .inventory import select_food, edible_count
 from .wildlife import Wildlife
 from .agents import Agent, PERSONALITIES
 from .social import SocialSystem
@@ -50,7 +52,9 @@ class Simulation:
             self.resources = Resources(self.world, capacity=1, replenish_interval=80)
         else:
             self.resources = Resources(self.world)
-        self.wildlife = Wildlife(self.world, self.agents, seed, wildlife_settings)
+        self.world, self.cooking_station = place_station(self.world, self.agents[0].position, {a.position for a in self.agents})
+        self.resources.cooking_station = self.cooking_station
+        self.wildlife = Wildlife(self.world, self.agents, seed, wildlife_settings, {self.cooking_station.position})
         self.resources.wildlife = self.wildlife
         self.progress.wildlife = self.wildlife
         self.decision_provider = decision_provider or RuleBasedDecisionProvider()
@@ -88,6 +92,8 @@ class Simulation:
             transition = self.survival.update(agent, self.tick)
             if transition:
                 self.progress.cancel_for(agent.id)
+                if hasattr(self.decision_provider, "interrupt"):
+                    self.decision_provider.interrupt(agent, "Temporary survival recovery", self.tick)
                 if transition == "incapacitated":
                     self.social.cancel_for(agent)
                 self.events.append({"tick": self.tick, "agent": agent.name, "actor_id": agent.id,
@@ -111,7 +117,7 @@ class Simulation:
                     context_summary["relevant_memory_count"] = len(self.social.relevant_memories(agent, peers))
                 context_summary["personality"] = agent.personality.copy()
                 context_summary["adjacent_peers"] = [
-                    {"id": other.id, "looks_hungry": other.hunger >= self.survival.hungry, "carrying_food": other.food > 0}
+                    {"id": other.id, "looks_hungry": other.hunger >= self.survival.hungry, "carrying_food": edible_count(other) > 0, "carrying_berries": other.food > 0}
                     for other in self.agents if other.id != agent.id and self.social.nearby(agent, other)]
                 context_summary["local_resource_stock"] = sum(
                     stock for position, stock in self.resources.stocks().items()
@@ -119,6 +125,10 @@ class Simulation:
                 context_summary["resource_scope"] = (
                     "full map for rule policy" if not hasattr(self.decision_provider, "name") else "local")
             active_job = self.progress.jobs.get(agent.id)
+            if active_job and hasattr(self.decision_provider, 'should_interrupt') and self.decision_provider.should_interrupt(agent,active_job.action):
+                self.progress.cancel_for(agent.id)
+                self.decision_provider.interrupt(agent,'Emergency interrupted an activity',self.tick)
+                active_job=None
             if agent.incapacitated_until:
                 action = Action(ActionType.REST if agent.energy < 100 else ActionType.WAIT,
                                 reasoning="Temporary recovery; resting until able to act.")
@@ -128,6 +138,7 @@ class Simulation:
                 action = Action(ActionType.WAIT)
             else:
                 action = self.decision_provider.decide(agent, self.world, self.resources, self.rng)
+            requested_action = action
             proposed_action = action.kind.value if isinstance(action, Action) and isinstance(action.kind, ActionType) else "invalid"
             rejected = False
             requested_target = action.target if isinstance(action, Action) else None
@@ -145,6 +156,7 @@ class Simulation:
             if status.get("fallback"):
                 decision_source = "rule-based"
             previous = agent.current_action
+            food_item = select_food(agent, action.item) if isinstance(action, Action) and action.kind == ActionType.EAT else None
             if not self.progress.execute(action, agent, self.world, self.resources, self.tick, decision_source):
                 rejected = True
                 if isinstance(action, Action) and isinstance(action.kind, ActionType) and action.kind in SOCIAL_ACTIONS:
@@ -154,10 +166,15 @@ class Simulation:
                 agent.goal = None
                 action = Action(ActionType.WAIT)
                 execute(action, agent, self.world, self.resources, self.tick, self.social)
+            if hasattr(self.decision_provider,'on_action_result') and isinstance(requested_action,Action):
+                pursuit_failed=(requested_action.kind==ActionType.HUNT and not self.progress.started
+                                and not self.progress.completed and agent.id not in self.progress.jobs)
+                self.decision_provider.on_action_result(agent,requested_action,self.progress.completed,
+                                                        rejected or pursuit_failed,self.tick)
             # Record all executed actions; the UI filters repeated movement/wait.
             self.events.append({"tick": self.tick, "agent": agent.name,
-                                "action": ("ACTIVITY" if agent.current_action in ("GATHER", "HUNT") and not self.progress.completed else agent.current_action),
-                                "activity_action": agent.current_action, "target": action.target,
+                                "action": ("ACTIVITY" if agent.current_action in ("GATHER", "HUNT", "COOK") and not self.progress.completed else agent.current_action),
+                                "activity_action": agent.current_action, "target": action.target, "item": food_item,
                                 "actor_id": agent.id, "executed": self.progress.completed,
                                 "accepted_start": self.progress.started,
                                 "duration_seconds": self.progress.duration_ticks*.25,
@@ -223,7 +240,7 @@ class Simulation:
             self.decision_provider.close()
 
     def snapshot(self) -> dict:
-        return {"chickens": [asdict(c) for c in self.wildlife.chickens.values()],
+        return {"cooking_station": asdict(self.cooking_station), "chickens": [asdict(c) for c in self.wildlife.chickens.values()],
                 "wildlife_respawns": self.wildlife.respawns.copy(),
                 "hunt_cooldowns": self.wildlife.cooldowns.copy(),
                 "pursuits": {key: asdict(p) for key,p in self.wildlife.pursuits.items()},

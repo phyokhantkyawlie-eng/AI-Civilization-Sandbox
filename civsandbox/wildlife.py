@@ -68,8 +68,9 @@ class Pursuit:
 
 
 class Wildlife:
-    def __init__(self, world, agents, seed=42, settings=None):
+    def __init__(self, world, agents, seed=42, settings=None, reserved_tiles=()):
         self.settings = settings or WildlifeSettings()
+        self.reserved_tiles = set(reserved_tiles)
         self.rng = random.Random(f"{seed}:chickens")
         self.chickens: dict[str, Chicken] = {}
         self.pursuits: dict[str, Pursuit] = {}
@@ -89,7 +90,7 @@ class Wildlife:
     def spawn(self, world, agents):
         if len(self.living()) >= self.settings.maximum_population:
             return False
-        occupied = {a.position for a in agents} | {c.position for c in self.living()}
+        occupied = {a.position for a in agents} | {c.position for c in self.living()} | self.reserved_tiles
         reachable = set(world.reachable(self.home))
         choices = sorted(p for p in reachable if p not in occupied)
         # Prefer quiet grass in the accessible village, without blocking a spawn.
@@ -141,7 +142,7 @@ class Wildlife:
                 chicken.next_move_tick = tick
             if tick < chicken.next_move_tick:
                 continue
-            blocked = occupied | {c.position for c in self.living() if c.id != chicken.id}
+            blocked = occupied | {c.position for c in self.living() if c.id != chicken.id} | self.reserved_tiles
             choices = [p for p in world.neighbors(chicken.position) if p not in blocked]
             destination = chicken.position
             if chicken.state == ChickenState.FLEE:

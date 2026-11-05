@@ -14,6 +14,7 @@ class Tile(Enum):
     BUSH = "bush"
     WATER = "water"
     HOUSE = "house"
+    CAMPFIRE = "campfire"
 
 
 @dataclass(frozen=True)

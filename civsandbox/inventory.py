@@ -7,9 +7,10 @@ class ItemDefinition:
     hunger_reduction: int = 0
 
 
-# Raw chicken is an ingredient. Cooking and cooked food belong to Stage 3.
+# Nutrition lives here; raw meat is an ingredient, never an edible item.
 ITEM_DEFINITIONS = {"berries": ItemDefinition("Berries", hunger_reduction=35),
-                    "raw_chicken": ItemDefinition("Raw chicken")}
+                    "raw_chicken": ItemDefinition("Raw chicken"),
+                    "cooked_chicken": ItemDefinition("Cooked chicken", hunger_reduction=65)}
 ITEM_NAMES = {key: definition.name for key, definition in ITEM_DEFINITIONS.items()}
 
 
@@ -66,6 +67,16 @@ class Inventory:
         other.add(item, quantity)
         return True
 
+    def convert(self, source, result):
+        """Atomic one-for-one conversion; full inventories need no extra slot."""
+        self._validate(source, 1)
+        self._validate(result, 1)
+        if source == result or self.quantity(source) < 1:
+            return False
+        self.remove(source)
+        self.add(result)
+        return True
+
     def set_quantity(self, item, quantity):
         if type(quantity) is not int or quantity < 0 or self.used-self.quantity(item)+quantity > self.capacity:
             raise ValueError("Invalid quantity")
@@ -73,3 +84,19 @@ class Inventory:
             self.items[item] = quantity
         else:
             self.items.pop(item, None)
+
+
+def edible_count(agent):
+    return sum(agent.inventory.quantity(key) for key,definition in ITEM_DEFINITIONS.items()
+               if definition.hunger_reduction > 0)
+
+
+def select_food(agent, requested=None):
+    if requested is not None:
+        definition=ITEM_DEFINITIONS.get(requested)
+        return requested if definition and definition.hunger_reduction > 0 and agent.inventory.quantity(requested)>0 else None
+    available=[key for key,definition in ITEM_DEFINITIONS.items()
+               if definition.hunger_reduction > 0 and agent.inventory.quantity(key)>0]
+    # Prefer sufficient nutrition with the least waste; otherwise use the largest meal.
+    return min(available,key=lambda key:(max(0,agent.hunger-ITEM_DEFINITIONS[key].hunger_reduction),
+                                        max(0,ITEM_DEFINITIONS[key].hunger_reduction-agent.hunger),key)) if available else None

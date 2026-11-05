@@ -140,7 +140,8 @@ def test_night_routine_is_personality_sensitive_and_urgent_food_overrides():
     rule.begin_tick(0, sim.agents)
     a.food, a.hunger, a.energy = 1, 10, 80
     a.personality['early_bird'] = 1
-    assert rule.decide(a, sim.world, sim.resources, random.Random(1)).kind == ActionType.REST
+    assert rule.decide(a, sim.world, sim.resources, random.Random(1)).kind in (ActionType.REST, ActionType.MOVE_TO)
+    assert rule.plans[a.id].goal == "REST" and rule.plans[a.id].steps[-1].kind == ActionType.REST
     a.personality['early_bird'] = 0
     assert not rule.prefers_rest(a)
     a.personality['early_bird'] = 1

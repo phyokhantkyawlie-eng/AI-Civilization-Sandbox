@@ -1,4 +1,4 @@
-# Development guide — offline wildlife Stage 2
+# Development guide — offline goal planning Stage 3
 
 ## Direction and launch
 
@@ -20,8 +20,8 @@ For a new environment, use Python 3.12 and install `requirements.txt` from avail
 | --- | --- |
 | World | `world.py`: 24×18 terrain, connectivity, seeded map construction and BFS. `resources.py`: finite bush stocks, deterministic replenishment, bounded change ledger. |
 | Agents | `agents.py`: stable IDs, numeric personalities, bounded needs, Goal, directed trust and memories. `inventory.py` is authoritative item storage; `Agent.food` is a berries compatibility view. |
-| Decisions | `decisions.py`: `decide(agent, world, resources, rng) -> Action`. Normal factory is `config.create_provider`. Use the simulation RNG, not global randomness or wall-clock time. |
-| Planning | Existing persistent Goal plus `food_action`, BFS, and `occupancy.py` break goals into legal tile steps. `pacing.py` reserves and completes timed activities; no separate planner module is necessary now. |
+| Decisions | `decisions.py`: utility candidates, emergency priorities and `decide(agent, world, resources, rng) -> Action`. Factory remains `config.create_provider`; use the simulation RNG for controlled choices. |
+| Planning | `planning.py` supplies Candidate and bounded GoalPlan models. The provider retains task queues; BFS/occupancy execute travel and `pacing.py` reserves/completes activities. |
 | Executor | `actions.py`: shared `validate` and atomic `execute`. `ActionProgress` validates at acceptance and completion. Providers may manage goals, but must not move NPCs, transfer items, alter resources or apply social consequences. |
 | Simulation | `simulation.py`: .25-second ticks; needs, resources, decisions, reservations, execution, invariants and numbered bounded events. It does not import Pygame. |
 | Social | `social.py`: addressed expiring requests, nearby validation, transfers/refusals, directed trust consequences and bounded memory. Read history only through memory-enabled accessors. |
@@ -29,7 +29,7 @@ For a new environment, use Python 3.12 and install `requirements.txt` from avail
 | Persistence/evaluation | Social JSON saves on clean exit; invalid history is preserved. Experiments use fresh providers, RNGs and no normal save path. `results.py` reads genuine exports and makes charts. |
 | Wildlife / player controller | `wildlife.py`: chicken FSM, finite population, claims/deadlines. Updated once by Simulation in the same world. Human controller remains future work. |
 
-All providers return the existing frozen Action model: MOVE_TO, GATHER, EAT, REST, WAIT, REQUEST_FOOD, SHARE_FOOD, REFUSE_REQUEST, TALK, HUNT. Do not bypass validation for a new decision source. Invalid actions must have no effects and receive a safe WAIT fallback. Decision explanations are public summaries, never unexecuted dialogue.
+All providers return the existing frozen Action model: MOVE_TO, GATHER, EAT, REST, WAIT, REQUEST_FOOD, SHARE_FOOD, REFUSE_REQUEST, TALK, HUNT, COOK. EAT optionally names an edible item; Agent.food remains the berries compatibility view. Do not bypass validation for a new decision source. Invalid actions must have no effects and receive a safe WAIT fallback. Decision explanations are public summaries, never unexecuted dialogue.
 
 ## Verified existing behavior
 
@@ -43,7 +43,7 @@ All providers return the existing frozen Action model: MOVE_TO, GATHER, EAT, RES
 
 ## Gaps to preserve for later survival stages
 
-Temporary incapacitation and timed recovery now exist, but no death/health model does, so mortality/survival metrics remain unavailable. Berries are the only edible item; raw chicken is a bounded ingredient reserve. Cooking and a human decision controller remain future work. Social history persists, but physical world/inventory state is not a full game save. Rules use full-map resource knowledge, unlike the local structured adapter context. The current needs policy is priority based with a weighted social utility, not a general utility scorer across every action. Goal planning is limited to existing food/exploration/social routes. Corridor yielding deliberately permits temporary tile overlap after three blocked ticks. Resource/social/event histories are bounded audit windows, not unlimited archives. These remain limitations after Stage 1.
+Temporary incapacitation and timed recovery now exist, but no death/health model does, so mortality/survival metrics remain unavailable. Berries and cooked chicken are edible; raw chicken must be cooked. A human decision controller remains future work. Social history persists, but physical world/inventory state is not a full game save. Rules use full-map resource knowledge, unlike the local structured adapter context. Utility ranking now covers survival and social goals with bounded multistep queues. It is a lightweight task planner, not a general-purpose search over arbitrary world states. Corridor yielding deliberately permits temporary tile overlap after three blocked ticks. Resource/social/event histories are bounded audit windows, not unlimited archives. These remain limitations after Stage 1.
 
 ## Verification and future changes
 
@@ -88,3 +88,19 @@ Conditional rule utility combines hunger, curiosity, risk and travel cost. It ne
 Raw chicken uses the existing Inventory and item registry with zero hunger reduction. Agent.food remains exclusively berries; neither eating nor social food sharing consumes raw meat. One raw reserve prevents pointless repeated hunting before Stage 3 cooking exists. Do not invent cooking, illness or raw-meat hunger benefits in Stage 2. Physical wildlife/inventory state is not persisted by the existing social-history save.
 
 Population and pursuit configuration is recorded in new experiment exports, and initial fingerprints now include chickens and wildlife RNG state. See STAGE2_WILDLIFE.md for actual checks and frequencies. Pre-Stage-2 recovery point: Git commit `de99831`. Native interactive QA remains manual; SDL renders and automated movement/asset checks are executed.
+
+## Stage 3 cooking and utility conventions
+
+`cooking.py` owns the shared CookingStation lease and read-only observation. Placement inserts one blocked CAMPFIRE tile only when all other previously reachable tiles remain connected. Every NPC cooks from an adjacent walkable tile using the same validation. Ingredients stay in inventory until the timed executor atomically converts one raw item into one cooked item. Full inventories can convert one-for-one. Cancellation, invalid completion and shutdown release leases without creating food. Nutrition belongs in ITEM_DEFINITIONS (berries 35, cooked chicken 65, raw 0), not in presentation classes.
+
+`planning.py` is a small bounded queue, not a second simulation or provider. The existing rule provider ranks Candidate components, handles emergency tiers, retains a GoalPlan and receives executor result callbacks. Plans contain at most six tasks, last at most 320 ticks (80 seconds), and fail after 80 ticks without progress. Failed-target retries normally wait 16 ticks; valid emergency meals/rest bypass that retry delay. WAIT plans reevaluate after eight ticks. Cooking contention waits within the existing plan. Moving chicken pursuits still belong to the tested hunting scheduler, not duplicated planning code.
+
+Public debug state exposes actual candidate utilities, selected reasons, remaining tasks and replan reasons (F3 then P). Emergency interruptions are counted separately from failed plans. Invalidated targets, rejected tasks, bounded pursuit failures and stalled/expired plans are ordinary recorded failures, not simulation exceptions. Every physical effect remains in the common validator/executor. Decisions may update goals and queues, never inventories, positions, energy or resource stocks.
+
+Numeric nature_affinity and resource_focus extend existing personality traits. No action depends on character names or receives identity-specific exemptions. Social willingness and directed trust still use the existing guarded memory accessors; experiments construct fresh providers/queues and isolated history for each condition. Candidate scoring does not consume random numbers for unselected goals. Exploration and selected social responses use seeded randomness.
+
+The existing experiment runner now exports actual gather/hunt/cook/meal/incapacitation/failed-plan counters plus initial/final inventories. Fingerprints include the campfire, and configuration includes the nutrition catalog and cook timing. Do not compare older generated datasets as though they used this planner. Physical inventories, cooking leases and plans remain session state; social JSON persistence is unchanged. Berry sharing remains the supported social food transfer; cooked-meal sharing and full world saves are not added.
+
+The pre-Stage-3 recovery point is Git commit `7609a00`. See STAGE3_COOKING_AI.md for measured verification, controls and known limitations.
+
+Stage 3 final verification after interruption: 251 passed, 1 skipped, no failures. Six isolated 4,800-tick trials conserved berries/raw/cooked items; a fresh main-project trial reproduced saved seed-7 metrics. Normal rule/mock headless launches were checked with networking and SDK imports blocked. Native interactive QA remains manual.

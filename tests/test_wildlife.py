@@ -287,7 +287,14 @@ def test_wildlife_configuration_and_validation(tmp_path,monkeypatch):
 
 def test_natural_hunting_opportunity_is_conditional_and_meat_is_conserved():
     sim=Simulation(7,scenario='food_shortage')
-    attempts=0;last=0;successes=0
+    # Controlled scarcity creates an opportunity; the provider still chooses the hunt.
+    actor=sim.agents[0]
+    chicken=sim.wildlife.living()[0]
+    actor.position=(3,2);actor.hunger=75;actor.energy=90
+    chicken.position=(4,2)
+    for bush in sim.resources.bushes.values():bush.quantity=0
+    for other in sim.agents[1:]:other.food=0
+    attempts=0;last=0;successes=0;cooked_meals=0
     for _ in range(2400):
         sim.step()
         fresh=[]
@@ -302,8 +309,9 @@ def test_natural_hunting_opportunity_is_conditional_and_meat_is_conserved():
                 assert actor.hunger>=65 and actor.energy>=40 and actor.food==0
                 assert actor.inventory.quantity('raw_chicken')==0
             successes+=int(event['action']=='HUNT' and event.get('executed',False))
+            cooked_meals+=int(event['action']=='EAT' and event.get('executed',False) and event.get('item')=='cooked_chicken')
     assert attempts>0
-    assert successes==sum(a.inventory.quantity('raw_chicken') for a in sim.agents)
+    assert successes==sum(a.inventory.quantity('raw_chicken')+a.inventory.quantity('cooked_chicken') for a in sim.agents)+cooked_meals
     assert all(a.inventory.quantity('raw_chicken')<=1 for a in sim.agents)
     assert sim.ai_summary()['api_calls']==0
 

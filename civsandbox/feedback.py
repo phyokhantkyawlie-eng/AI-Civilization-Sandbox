@@ -1,10 +1,10 @@
 """Bounded visual feedback from committed simulation events only."""
 from dataclasses import dataclass
 
-ANIMATION_STATES = ("idle", "walk", "gather", "eat", "rest", "talk", "share")
-ACTION_STATES = {"HUNT": "idle", "GATHER": "gather", "EAT": "eat", "REST": "rest",
+ANIMATION_STATES = ("idle", "walk", "gather", "eat", "rest", "talk", "share", "cook")
+ACTION_STATES = {"COOK": "cook", "HUNT": "idle", "GATHER": "gather", "EAT": "eat", "REST": "rest",
                  "REQUEST_FOOD": "talk", "REFUSE_REQUEST": "talk", "TALK": "talk", "SHARE_FOOD": "share"}
-LABELS = {"HUNT": "Collected raw chicken", "GATHER": "Gathered food", "EAT": "Ate food", "REST": "Resting",
+LABELS = {"COOK": "Cooked chicken", "HUNT": "Collected raw chicken", "GATHER": "Gathered food", "EAT": "Ate food", "REST": "Resting",
           "REQUEST_FOOD": "Asked for food", "SHARE_FOOD": "Shared food",
           "REFUSE_REQUEST": "Refused", "TALK": "Greeting"}
 TEMPLATES = {"REQUEST_FOOD": "Could you spare some food?", "SHARE_FOOD": "Here is some food.",
@@ -61,7 +61,7 @@ class Feedback:
                     else:
                         prefix = "Mock template" if source == "mock" else "Rule-based template"
                         speech = prefix + ": " + TEMPLATES[action]
-                label = {"HUNT": "Pursuing chicken", "GATHER": "Gathering berries", "EAT": "Eating"}.get(action, LABELS[action]) if event.get("accepted_start") else LABELS[action]
+                label = {"COOK": "Cooking chicken", "HUNT": "Pursuing chicken", "GATHER": "Gathering berries", "EAT": "Eating"}.get(action, LABELS[action]) if event.get("accepted_start") else LABELS[action]
                 self.notices[actor] = Notice(actor, label, speech, "",
                                              ACTION_STATES[action], self.clock+max(self.lifetime, event.get("duration_seconds", 0)))
             if event.get("social"):

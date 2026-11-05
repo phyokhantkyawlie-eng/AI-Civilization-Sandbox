@@ -1,6 +1,7 @@
 """Paired, isolated social-memory trials around the existing simulation."""
 import argparse
 import csv
+from collections import Counter
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
 import hashlib
@@ -14,6 +15,7 @@ import time
 from .config import Settings, create_provider
 from .ai import safe_text
 from .simulation import Simulation
+from .inventory import ITEM_DEFINITIONS
 
 METRICS = ("requests", "shares", "refusals", "cooperation_rate", "survival_rate",
            "average_hunger", "invalid_action_rate", "gemini_calls", "fallback_count",
@@ -27,7 +29,7 @@ def rate(numerator, denominator):
 def initial_fingerprint(sim):
     """Hash physical/RNG state, excluding the experimental treatment flag."""
     state = {"world": [[t.value for t in row] for row in sim.world.tiles],
-             "agents": sim.snapshot()["agents"], "chickens": sim.snapshot()["chickens"],
+             "agents": sim.snapshot()["agents"], "chickens": sim.snapshot()["chickens"], "cooking_station": sim.snapshot()["cooking_station"],
              "wildlife_rng": repr(sim.wildlife.rng.getstate()), "resources": sim.resources.stocks().__repr__(),
              "rng": repr(sim.rng.getstate())}
     return hashlib.sha256(json.dumps(state, sort_keys=True).encode()).hexdigest()
@@ -43,7 +45,18 @@ def metrics(sim, hunger_sum, samples, fallback_count, elapsed):
         "malformed response", "action was not an offered choice",
         "decision became invalid before execution") for e in sim.events)
     invalid = sum(e["action"] == "REJECTED" for e in sim.events) + model_rejected
-    return {"requests": requests, "shares": shares, "refusals": refusals,
+    completed=Counter(e["action"] for e in sim.events if e.get("executed"))
+    meals=Counter(e.get("item") or "berries" for e in sim.events if e["action"]=="EAT" and e.get("executed"))
+    rule=getattr(sim.decision_provider,"rule",sim.decision_provider)
+    planner_stats=getattr(rule,"stats",{})
+    return {"gathering_actions":completed["GATHER"],
+            "hunting_attempts":sum(e.get("activity_action")=="HUNT" and bool(e.get("accepted_start")) for e in sim.events),
+            "hunting_successes":completed["HUNT"], "cooking_completions":completed["COOK"],
+            "meals_consumed":dict(meals),
+            "incapacitations":sum(e["action"]=="SURVIVAL" and e.get("result")=="incapacitated" for e in sim.events),
+            "failed_plans":planner_stats.get("failed"), "interrupted_plans":planner_stats.get("interrupted"),
+            "final_food_items":{item:sum(a.inventory.quantity(item) for a in sim.agents) for item in ITEM_DEFINITIONS},
+            "requests": requests, "shares": shares, "refusals": refusals,
             "cooperation_rate": rate(shares, shares+refusals),
             "survival_rate": None, "average_hunger": rate(hunger_sum, samples),
             "invalid_actions": invalid, "action_opportunities": executed,
@@ -61,6 +74,7 @@ def run_trial(settings, seed, ticks, memory, scenario="food_shortage", tick_seco
     row = {"seed": seed, "condition": "MEMORY_ON" if memory else "MEMORY_OFF",
            "provider": settings.provider, "model": safe_text(settings.model, settings.api_key) if settings.provider == "gemini" else None,
            "status": "running", "initial_state_sha256": initial_fingerprint(sim)}
+    row["initial_food_items"]={item:sum(a.inventory.quantity(item) for a in sim.agents) for item in ITEM_DEFINITIONS}
     started = time.perf_counter()
     hunger_sum = samples = fallbacks = 0
     hunger_series = []
@@ -148,7 +162,7 @@ def export(output, config, rows):
 
 def run_batch(settings, runs, ticks, seed, output, scenario="food_shortage", tick_seconds=.25):
     output.mkdir(parents=True, exist_ok=False)
-    config = {"wildlife": asdict(settings.wildlife), "day_clock": asdict(settings.day_clock), "survival": asdict(settings.survival), "action_timing": asdict(settings.action_timing), "provider": settings.provider, "model": safe_text(settings.model, settings.api_key) if settings.provider == "gemini" else None,
+    config = {"food_catalog": {key: {"name":definition.name,"hunger_reduction":definition.hunger_reduction} for key,definition in ITEM_DEFINITIONS.items()}, "wildlife": asdict(settings.wildlife), "day_clock": asdict(settings.day_clock), "survival": asdict(settings.survival), "action_timing": asdict(settings.action_timing), "provider": settings.provider, "model": safe_text(settings.model, settings.api_key) if settings.provider == "gemini" else None,
               "runs": runs, "ticks": ticks, "seeds": list(range(seed, seed+runs)),
               "action_timing_ticks": settings.action_timing.__dict__, "scenario": scenario, "max_ai_calls_per_trial": settings.max_calls,
               "cooldown_ticks": settings.cooldown_ticks, "timeout_seconds": settings.timeout_seconds,

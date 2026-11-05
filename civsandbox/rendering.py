@@ -27,8 +27,11 @@ class Renderer:
         self.font = pygame.font.Font(None, 23)
         self.title = pygame.font.Font(None, 32)
         self.small = pygame.font.Font(None, 19)
+        self.station_labels={busy:self.small.render(label,True,(250,226,166)) for busy,label in
+                             ((False,"Campfire · Ready"),(True,"Campfire · Busy"))}
         self.selected_id = None
         self.debug = False
+        self.plan_debug = False
         self.selected_bush = None
         self.inspector_tab = "State"
         self.memory_page = 0
@@ -97,6 +100,8 @@ class Renderer:
                 foot = (foot[0]+round((index-(len(companions)-1)/2)*12), foot[1])
             self.draw_feet[agent.id] = foot
             layers.append((foot[1], 1, (agent, foot)))
+        station=simulation.cooking_station
+        layers.append((ORIGIN[1]+station.position[1]*TILE_SIZE+30,3,station))
         self.chicken_rects.clear()
         for chicken in simulation.wildlife.living():
             foot = (ORIGIN[0]+chicken.position[0]*TILE_SIZE+18,
@@ -111,9 +116,11 @@ class Renderer:
             elif kind == 1:
                 agent, foot = item
                 self.draw_character(agent, foot)
-            else:
+            elif kind == 2:
                 chicken, foot = item
                 self.draw_chicken(chicken, foot, simulation.tick)
+            else:
+                self.draw_campfire(item)
         # Labels are drawn above foreground terrain so every villager stays identifiable.
         for agent in simulation.agents:
             rect = self.character_rects[agent.id]
@@ -134,11 +141,13 @@ class Renderer:
                 self.lighting_cache[darkness] = tint
             self.screen.blit(self.lighting_cache[darkness], self.map_rect)
         self.draw_feedback()
-        if self.debug:
+        if self.debug and self.plan_debug:
+            self.draw_plan_debug(simulation)
+        elif self.debug:
             self.text("PAUSED" if simulation.paused else "RUNNING", (900, 82), title=True)
             self.text(f"Tick {simulation.tick} / {ticker.speed:g}x", (900, 116))
             self.text(f"Seed: {simulation.seed}", (900, 141))
-            self.screen.blit(self.small.render("Click NPC / Tab: inspect", True, (168, 187, 192)), (900, 163))
+            self.screen.blit(self.small.render("Tab: inspect / P: plans", True, (168, 187, 192)), (900, 163))
             for i, tab in enumerate(("State", "Traits", "Trust", "Memory")):
                 rect = pygame.Rect(900+i*48, 183, 46, 23)
                 pygame.draw.rect(self.screen, (57, 81, 89) if tab == self.inspector_tab else (36, 48, 56), rect)
@@ -270,6 +279,8 @@ class Renderer:
         self.text("STARFALL VILLAGE", (20, 17), title=True)
         now = simulation.time_of_day
         self.text(f"Day {now.day}  ·  {now.hour:02d}:{now.minute:02d}  ·  {now.period.title()}", (20, 49), (193, 205, 181))
+        station_status="Campfire: Busy" if simulation.cooking_station.occupied_by else "Campfire: Ready"
+        self.screen.blit(self.small.render(station_status,True,(222,202,153)),(460,49))
         self.text("F3 · Details", (944, 24), (193, 205, 181))
         pygame.draw.rect(self.screen, (35, 49, 54), (892, 74, 204, 594), border_radius=10)
         self.text("Paused" if simulation.paused else "Village life", (906, 87), title=True)
@@ -286,7 +297,7 @@ class Renderer:
             self.draw_bar("Energy", actor.energy, label, color, 300)
             self.text(f"Inventory ({actor.inventory.used}/{actor.inventory.capacity})", (906, 366))
             for row, (item, quantity) in enumerate(sorted(actor.inventory.items.items())):
-                self.text(f"{ITEM_NAMES[item]} × {quantity}", (906, 397+row*20), (226, 179, 161))
+                self.text(f"{ITEM_NAMES[item]} × {quantity}", (906, 393+row*18), (226, 179, 161))
             if not actor.inventory.used:
                 self.text("Empty", (906, 397), (193, 205, 181))
             goal = actor.goal.purpose.title() if actor.goal else "Reevaluating"
@@ -309,7 +320,7 @@ class Renderer:
             self.screen.blit(self.small.render("Click a person or berry bush", True, (193, 205, 181)), (906, 207))
         self.text("Village news", (906, 480))
         interesting = [e for e in reversed(simulation.events) if e.get("social") or (
-            e.get("executed") and e["action"] in ("GATHER", "EAT", "HUNT")) or e["action"] == "HUNT_FAILED"][:4]
+            e.get("executed") and e["action"] in ("GATHER", "EAT", "HUNT", "COOK")) or e["action"] == "HUNT_FAILED"][:4]
         names = {a.id: a.name for a in simulation.agents}
         for index, event in enumerate(interesting):
             if event.get("social"):
@@ -322,8 +333,10 @@ class Renderer:
                 text = f"{name}'s hunt ended"
             elif event["action"] == "HUNT":
                 text = f"{event['agent']} collected raw chicken"
+            elif event["action"] == "COOK":
+                text = f"{event['agent']} cooked chicken"
             elif event["action"] == "EAT":
-                text = f"{event['agent']} ate berries"
+                text = f"{event['agent']} ate {ITEM_NAMES.get(event.get('item'), 'berries').lower()}"
             else:
                 text = f"{event['agent']} picked berries"
             words, lines, line = text.split(), [], ""
@@ -387,6 +400,43 @@ class Renderer:
                                  (card.x+8, card.y+6+i*17))
         self.feedback_rects = occupied
 
+    def draw_campfire(self, station):
+        x=ORIGIN[0]+station.position[0]*TILE_SIZE+18
+        y=ORIGIN[1]+station.position[1]*TILE_SIZE+26
+        pygame.draw.ellipse(self.screen,(96,86,72),(x-14,y-8,28,15))
+        pygame.draw.line(self.screen,(105,64,36),(x-9,y+1),(x+9,y-5),4)
+        pygame.draw.line(self.screen,(105,64,36),(x+9,y+1),(x-9,y-5),4)
+        pygame.draw.polygon(self.screen,(225,119,49),[(x-7,y-3),(x,y-21),(x+7,y-3)])
+        pygame.draw.polygon(self.screen,(249,204,89),[(x-3,y-4),(x+1,y-13),(x+4,y-4)])
+        pygame.draw.ellipse(self.screen,(47,55,58),(x-8,y-21,16,10))
+        label=self.station_labels[station.occupied_by is not None]
+        self.screen.blit(label,(x-label.get_width()//2,y-37))
+
+    def draw_plan_debug(self, simulation):
+        self.text('GOAL PLANNER',(900,88),title=True)
+        self.screen.blit(self.small.render('P: inspector / F3: game',True,(168,187,192)),(900,124))
+        actor=next((a for a in simulation.agents if a.id==self.selected_id),None)
+        if not actor:
+            self.text('Select a villager',(900,170))
+            return
+        provider=getattr(simulation.decision_provider,'rule',simulation.decision_provider)
+        state=getattr(provider,'debug',{}).get(actor.id,{})
+        plan=getattr(provider,'plans',{}).get(actor.id)
+        lines=[actor.name,'Goal: '+(plan.goal if plan else state.get('goal','none')),'Top utilities:']
+        lines += [f"{c['goal']}: {c['score']:.1f}" for c in state.get('utilities',[])[:5]]
+        lines += ['Reason:',state.get('reason','No decision yet'),'Remaining tasks:']
+        lines += [step.kind.value+((' '+step.item) if step.item else '') for step in plan.steps] if plan else ['Reevaluating']
+        lines += ['Last replan:',state.get('replan','Initial selection')]
+        y=161
+        for text in lines:
+            words=text.split();line=''
+            for word in words:
+                if self.small.size((line+' '+word).strip())[0]>186 and line:
+                    self.screen.blit(self.small.render(line,True,(221,226,212)),(900,y));y+=17;line=''
+                line=(line+' '+word).strip()
+            self.screen.blit(self.small.render(line,True,(221,226,212)),(900,y));y+=18
+            if y>648:break
+
     def draw_chicken(self, chicken, foot, tick):
         x, y = foot
         pecking = chicken.activity == "pecking"
@@ -449,7 +499,7 @@ class Renderer:
                               if event.get("agent") == selected.name and event["action"] == "MOVE_TO"), None)
             destination = last_move.get("destination", last_move["target"]) if selected.current_action == "MOVE_TO" and last_move else None
             lines = [f"Hunger: {selected.hunger}/100", f"Energy: {selected.energy}/100",
-                     f"Food: {selected.food}/5", f"Doing: {selected.current_action}",
+                     f"Berries: {selected.food}/{selected.inventory.capacity}", f"Doing: {selected.current_action}",
                      f"Position: {selected.position}",
                      f"Destination: {destination or '-'}",
                      f"Facing: {self.characters[selected.id].animator.direction}",
@@ -516,6 +566,8 @@ def handle_event(event, simulation, ticker, renderer=None) -> bool:
             return False
         if event.key == pygame.K_F3 and renderer:
             renderer.debug = not renderer.debug
+        if event.key == pygame.K_p and renderer and renderer.debug:
+            renderer.plan_debug = not renderer.plan_debug
         if event.key == pygame.K_TAB and renderer:
             tabs = ("State", "Traits", "Trust", "Memory")
             renderer.inspector_tab = tabs[(tabs.index(renderer.inspector_tab)+1) % len(tabs)]

@@ -16,6 +16,7 @@ class ActionTiming:
     response_ticks: int = 10
     social_cooldown_ticks: int = 40
     rest_ticks: int = 4
+    cook_ticks: int = 20
 
     def __post_init__(self):
         if self.needs_interval_ticks < 1:
@@ -24,14 +25,14 @@ class ActionTiming:
             raise ValueError("Action timing values must be nonnegative integers")
 
     def duration(self, action):
-        return {ActionType.REST: self.rest_ticks, ActionType.GATHER: self.gather_ticks, ActionType.EAT: self.eat_ticks,
+        return {ActionType.COOK: self.cook_ticks, ActionType.REST: self.rest_ticks, ActionType.GATHER: self.gather_ticks, ActionType.EAT: self.eat_ticks,
                 ActionType.TALK: self.greeting_ticks, ActionType.REQUEST_FOOD: self.request_ticks,
                 ActionType.SHARE_FOOD: self.response_ticks,
                 ActionType.REFUSE_REQUEST: self.response_ticks}.get(action.kind, 0)
 
     @classmethod
     def instant(cls):
-        return cls(1, 0, 0, 0, 0, 0, 0, 0)
+        return cls(1, 0, 0, 0, 0, 0, 0, 0, 0)
 
 
 @dataclass
@@ -49,6 +50,7 @@ class ActionProgress:
         self.survival = survival or SurvivalRules()
         self.occupancy = occupancy or Occupancy()
         self.wildlife = None
+        self.cooking_station = None
         self.duration_ticks = 0
         self.jobs = {}
         self.locks = {}
@@ -126,6 +128,9 @@ class ActionProgress:
             self.started = True
             return True
         duration = self.duration_ticks = self.duration_for(action, actor)
+        if action.kind == ActionType.COOK:
+            self.cooking_station = resources.cooking_station
+            self.cooking_station.reserve(actor, tick, duration)
         if duration == 0:
             self.completed = execute(action, actor, world, resources, tick, self.social)
             return self.completed
@@ -199,6 +204,8 @@ class ActionProgress:
 
     def release(self, actor_id):
         job = self.jobs.pop(actor_id)
+        if job.action.kind == ActionType.COOK and self.cooking_station:
+            self.cooking_station.release(actor_id)
         if job.action.kind == ActionType.HUNT and self.wildlife:
             self.wildlife.abort(actor_id, "activity cancelled")
         for member in job.participants:

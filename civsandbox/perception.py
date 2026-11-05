@@ -1,15 +1,19 @@
 """Local observations and valid choices; unknown terrain is never routed through."""
 from dataclasses import asdict
 
+from .inventory import ITEM_DEFINITIONS, edible_count
 from .actions import Action, ActionType, validate
 from .world import Tile, World
 from .wildlife import VisibleWildlife
+from .cooking import CookingObservation
 
 
 class VisibleResources:
-    def __init__(self, stocks, wildlife=None):
+    def __init__(self, stocks, wildlife=None, cooking_station=None, tick=0):
         self._stocks = stocks
         self.wildlife = wildlife
+        self.cooking_station = cooking_station
+        self.tick = tick
 
     def stocks(self):
         return self._stocks.copy()
@@ -29,8 +33,13 @@ def observe(agent, world, resources, agents=(), radius=4, social=None):
                              for ty, row in enumerate(world.tiles)))
     local_resources = VisibleResources({p: food for p, food in resources.stocks().items()
                                         if p in visible},
-                                      VisibleWildlife(resources.wildlife, visible) if getattr(resources, "wildlife", None) else None)
+                                      VisibleWildlife(resources.wildlife, visible) if getattr(resources, "wildlife", None) else None,
+                                      CookingObservation(**asdict(resources.cooking_station)) if getattr(resources,"cooking_station",None) and resources.cooking_station.position in visible else None,
+                                      getattr(resources,"tick",0))
     candidates = [Action(kind) for kind in (ActionType.EAT, ActionType.REST, ActionType.WAIT)]
+    candidates += [Action(ActionType.EAT,item=key) for key,d in ITEM_DEFINITIONS.items() if d.hunger_reduction>0]
+    if local_resources.cooking_station:
+        candidates.append(Action(ActionType.COOK,local_resources.cooking_station.id))
     candidates += [Action(ActionType.MOVE_TO, p) for p in local_world.reachable(agent.position)
                    if p != agent.position]
     candidates += [Action(ActionType.GATHER, p) for p in local_resources.stocks()]
@@ -53,13 +62,14 @@ def observe(agent, world, resources, agents=(), radius=4, social=None):
                   "goal": asdict(agent.goal) if agent.goal else None},
         "visibility": "Manhattan radius 4; no vision occlusion; unknown tiles unavailable",
         "nearby_npcs": [{"id": a.id, "name": a.name, "position": list(a.position),
-                        **({"looks_hungry": a.hunger >= hungry, "carrying_food": a.food > 0}
+                        **({"looks_hungry": a.hunger >= hungry, "carrying_food": edible_count(a) > 0, "carrying_berries": a.food > 0}
                            if social and social.nearby(agent, a) else {})} for a in agents
                         if a.id != agent.id and a.position in visible],
         "tiles": [{"position": [tx, ty], "terrain": world.tiles[ty][tx].value}
                   for tx, ty in sorted(visible)],
         "resources": [{"position": list(p), "food": food}
                       for p, food in local_resources.stocks().items()],
+        "cooking_station": asdict(local_resources.cooking_station) if local_resources.cooking_station else None,
         "nearby_chickens": [{"id": c.id, "position": list(c.position), "state": c.state.value}
                             for c in local_resources.wildlife.chickens.values()] if local_resources.wildlife else [],
         "valid_actions": [action_dict(a) for a in choices],
@@ -81,4 +91,5 @@ def action_dict(action):
     target = action.target
     if isinstance(target, tuple):
         target = {"x": target[0], "y": target[1]}
-    return {"action": action.kind.value, "target": target, "request_id": action.request_id}
+    return {"action": action.kind.value, "target": target, "request_id": action.request_id,
+            **({"item":action.item} if action.item is not None else {})}

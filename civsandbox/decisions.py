@@ -3,6 +3,9 @@ import random
 from typing import Protocol
 
 from .daynight import DayClock
+from .inventory import edible_count, select_food, ITEM_DEFINITIONS
+from .planning import Candidate, GoalPlan
+from .world import Tile
 from .survival import SurvivalRules
 from .actions import Action, ActionType, validate
 from .agents import Agent, Goal
@@ -22,11 +25,19 @@ class RuleBasedDecisionProvider:
         self.survival = SurvivalRules()
         self.tick = 0
         self.hunt_checks = {}
+        self.plans = {}
+        self.debug = {}
+        self.retry_after = {}
+        self.audit_events = []
+        self.stats = {"selected":0,"completed":0,"failed":0,"interrupted":0}
 
     def bind_social(self, social):
         self.social = social
 
     def bind_routines(self, clock, survival):
+        if clock != self.clock or survival != self.survival:
+            self.plans.clear()
+            for state in self.debug.values():state["replan"]="Routine configuration changed"
         self.clock, self.survival = clock, survival
 
     def begin_tick(self, tick, agents):
@@ -38,76 +49,229 @@ class RuleBasedDecisionProvider:
         early = agent.personality.get("early_bird", 0.5)
         return hour >= 20+4*(1-early) or hour < 5+4*(1-early)
 
-    def decide(self, agent, world, resources, rng) -> Action:
-        if self.social and self.social.pacing:
-            incoming = [r for r in self.social.active_requests(agent) if r.recipient_id == agent.id]
-            if incoming and agent.energy > 5 and agent.hunger < self.survival.inefficient_hunger:
-                response = self.social_choice(agent, world, resources, rng)
-                if response:
-                    return response
-        if agent.food > 0 and agent.hunger >= 30:
-            return Action(ActionType.EAT)
-        if agent.energy <= self.survival.rest_energy or (agent.current_action == "REST" and agent.energy < 70):
-            return Action(ActionType.REST)
-
-        routine_rest = self.prefers_rest(agent)
-        urgent_food = agent.hunger >= self.survival.hungry and agent.food == 0
-        if routine_rest and not urgent_food:
-            agent.goal = Goal("rest", agent.position)
-            return Action(ActionType.REST if agent.energy < 90 else ActionType.WAIT,
-                          reasoning="Night routine; urgent food needs take priority.")
-        if agent.goal and agent.goal.purpose == "rest":
-            agent.goal = None
-
-        social_action = self.social_choice(agent, world, resources, rng)
-        if social_action:
-            return social_action
-
-        hunt = self.hunting_choice(agent, world, resources)
-        if hunt:
-            return hunt
-
-        # Preserve a food goal until stocked, depleted, or unreachable.
-        needs_food = agent.food < (2 if self.clock.at(self.tick).daylight else 1)
-        if needs_food:
-            if agent.goal and agent.goal.purpose == "food":
-                action = self.food_action(agent, agent.goal.target, world, resources)
-                if action:
-                    return action
-            candidates = []
-            for bush, stock in resources.stocks().items():
-                if stock:
-                    for approach in world.neighbors(bush):
-                        route = world.path(agent.position, approach)
-                        if approach == agent.position or route:
-                            candidates.append((len(route), bush, approach))
-            if candidates:
-                _, bush, _ = min(candidates)
-                agent.goal = Goal("food", bush)
-                return self.food_action(agent, bush, world, resources)
-            agent.goal = None
-            return Action(ActionType.WAIT)
-
-        if agent.goal and agent.goal.purpose in ("explore", "social"):
-            action = Action(ActionType.MOVE_TO, agent.goal.target)
-            if validate(action, agent, world, resources):
-                return action
-        destinations = [p for p in world.reachable(agent.position) if p != agent.position]
-        if destinations:
-            agent.goal = Goal("explore", rng.choice(destinations))
-            return Action(ActionType.MOVE_TO, agent.goal.target)
+    def finish_plan(self, agent, result, reason, tick=None):
+        plan = self.plans.pop(agent.id, None)
+        if plan is None:
+            return
+        tick = self.tick if tick is None else tick
+        self.stats[result] += 1
+        if result == 'failed':
+            self.retry_after[agent.id] = (plan.goal, plan.target, tick + 16)
+        self.audit_events.append({'tick': tick, 'agent': agent.name, 'actor_id': agent.id, 'action': 'PLAN', 'result': result, 'goal': plan.goal, 'reason': reason})
+        del self.audit_events[:-128]
+        self.debug.setdefault(agent.id, {})['replan'] = reason
         agent.goal = None
-        return Action(ActionType.WAIT)
 
-    def hunting_choice(self, agent, world, resources):
+    def should_interrupt(self, agent, action):
+        return agent.hunger >= self.survival.inefficient_hunger and edible_count(agent) > 0 and (action.kind != ActionType.EAT) or (agent.energy <= self.survival.rest_energy and action.kind not in (ActionType.EAT, ActionType.REST))
+
+    def interrupt(self, agent, reason, tick):
+        self.finish_plan(agent, 'interrupted', reason, tick)
+
+    def on_action_result(self, agent, requested, completed, failed, tick):
+        plan = self.plans.get(agent.id)
+        if plan is None:
+            return
+        if failed:
+            self.finish_plan(agent, 'failed', 'Action failed or pursuit ended', tick)
+            return
+        if completed and plan.steps and (requested.kind == plan.steps[0].kind):
+            step = plan.steps[0]
+            if step.kind == ActionType.MOVE_TO:
+                if agent.position != plan.checkpoint.get('position'):
+                    plan.last_progress = tick
+                    plan.checkpoint['position'] = agent.position
+                if agent.position != step.target:
+                    return
+            elif step.kind == ActionType.REST and agent.energy < plan.rest_target:
+                plan.last_progress = tick
+                return
+            elif step.kind == ActionType.WAIT and (not plan.satisfied(agent, tick, self.social)):
+                return
+            plan.pop(agent, tick)
+            if not plan.steps:
+                self.finish_plan(agent, 'completed', 'Goal completed', tick)
+
+    @staticmethod
+    def approach(agent, target, world, include_target=False):
+        choices = world.neighbors(target) + ([target] if include_target and world.walkable(target) else [])
+        routes = []
+        for p in choices:
+            route = world.path(agent.position, p)
+            if p == agent.position or route:
+                routes.append((len(route), p))
+        return min(routes) if routes else None
+
+    @staticmethod
+    def travel(agent, position):
+        return [] if position == agent.position else [Action(ActionType.MOVE_TO, position)]
+
+    def candidates(self, agent, world, resources):
+        """Relative utility units: benefit/urgency minus travel, waiting and risk."""
+        h = agent.hunger
+        food = edible_count(agent)
+        traits = agent.personality
+        risk = traits.get('risk_aversion', 0.5)
+        nature = traits.get('nature_affinity', 0.5)
+        focus = traits.get('resource_focus', 0.5)
+        daylight = self.clock.at(self.tick).daylight
+        rest_night = self.prefers_rest(agent) and (not (h >= self.survival.hungry and food == 0))
+        proposals = []
+
+        def add(goal, target, steps, components, reason, rest_target=70):
+            proposals.append(Candidate(goal, target, steps, components, reason, rest_target))
+        item = select_food(agent)
+        if item and h >= 30:
+            benefit = min(h, ITEM_DEFINITIONS[item].hunger_reduction)
+            add('EAT', item, [Action(ActionType.EAT, item=item)], {'base': 30, 'nutrition': benefit, 'hunger': h * 0.4}, 'Eat available nutrition before acquiring more')
+        rest_needed = agent.energy <= self.survival.rest_energy or (agent.current_action == 'REST' and agent.energy < 70)
+        if rest_needed or rest_night:
+            target = agent.position
+            if rest_night and agent.energy > 40:
+                shelters = [(len(route), p) for y, row in enumerate(world.tiles) for x, tile in enumerate(row) if tile == Tile.HOUSE for p in world.neighbors((x, y)) if (route := world.path(agent.position, p)) and len(route) <= 4]
+                if shelters:
+                    target = min(shelters)[1]
+            action = Action(ActionType.REST if agent.energy < (90 if rest_night else 70) else ActionType.WAIT)
+            add('REST', target, self.travel(agent, target) + [action], {'fatigue': (100 - agent.energy) * 0.8, 'night': 110 if rest_night else 0, 'commitment': 20 if agent.current_action == 'REST' else 0}, 'Recover energy; preferred night schedule' if rest_night else 'Recover low energy', 90 if rest_night else 70)
+        reserve = 2 if daylight else 1
+        if food < reserve and agent.inventory.used < agent.inventory.capacity:
+            options = []
+            for bush, stock in resources.stocks().items():
+                route = self.approach(agent, bush, world) if stock else None
+                if route:
+                    options.append((route[0], bush, route[1]))
+            if options:
+                cost, bush, position = min(options)
+                steps = self.travel(agent, position) + [Action(ActionType.GATHER, bush)]
+                if h >= 30:
+                    steps.append(Action(ActionType.EAT, item='berries'))
+                add('GATHER_FOOD', bush, steps, {'base': 25, 'hunger': h * 0.65, 'reserve': 8 * (reserve - food), 'nature': nature * 6, 'daylight': 8 if daylight else 0, 'travel': -cost * (1.5 + risk * 0.5)}, 'Reachable berries provide food and a small reserve')
+        station = getattr(resources, 'cooking_station', None)
+        raw = agent.inventory.quantity('raw_chicken')
+        if raw and station:
+            route = self.approach(agent, station.position, world, True)
+            if route:
+                steps = self.travel(agent, route[1]) + [Action(ActionType.COOK, station.id)]
+                if h >= 30:
+                    steps.append(Action(ActionType.EAT, item='cooked_chicken'))
+                wait = max(0, (station.ready_tick or self.tick) - self.tick) if station.occupied_by not in (None, agent.id) else 0
+                add('COOK_FOOD', station.id, steps, {'base': 40, 'hunger': h * 0.7, 'nutrition': ITEM_DEFINITIONS['cooked_chicken'].hunger_reduction / 10, 'resourcefulness': focus * 8, 'travel': -route[0] * 1.3, 'station_wait': -wait * 0.2}, 'Convert owned raw meat into a larger meal')
+        hunt = self.hunting_choice(agent, world, resources, commit=False)
+        if hunt and station and (route := self.approach(agent, station.position, world, True)):
+            chicken = resources.wildlife.chickens[hunt.target]
+            chase = self.approach(agent, chicken.position, world)
+            cook_travel = self.approach(chicken, station.position, world, True)
+            cost = cook_travel[0] if cook_travel else 999
+            if chase and cook_travel:
+                steps = [hunt] + [Action(ActionType.MOVE_TO, route[1]), Action(ActionType.COOK, station.id), Action(ActionType.EAT, item='cooked_chicken')]
+                add('HUNT_FOOD', hunt.target, steps, {'base': 30, 'hunger': h * 0.65, 'nutrition': ITEM_DEFINITIONS['cooked_chicken'].hunger_reduction * 0.2, 'curiosity': traits.get('curiosity', 0.5) * 10, 'risk': -risk * 35, 'pursuit': -chase[0] * 3, 'cook_travel': -cost, 'work_time': -7}, 'Scarce berries justify a bounded hunt, cooking and meal')
+        if self.social:
+            incoming = [r for r in self.social.active_requests(agent) if r.recipient_id == agent.id]
+            if incoming:
+                add('HELP_OTHER', incoming[0].requester_id, [], {'response': 150, 'cooperation': traits.get('cooperation', 0.5) * 15}, 'Respond to a real nearby food request')
+            peers = [p for p in self.social.agents.values() if p.id != agent.id and self.social.nearby(agent, p)]
+            if food == 0 and h >= self.survival.hungry:
+                refusals = {m['actor_id'] for m in self.social.relevant_memories(agent, {p.id for p in peers}) if m['result'] == 'refused' and self.social.tick - m['tick'] < 12}
+                donors = [p for p in peers if p.food > 0 and p.id not in refusals and validate(Action(ActionType.REQUEST_FOOD, p.id), agent, world, resources, self.social)]
+                if donors:
+                    donor = max(donors, key=lambda p: (self.social.trust_for(agent, p.id), p.id))
+                    add('GET_HELP', donor.id, [], {'request': 90, 'hunger': h * 0.3, 'risk': -risk * 8, 'trust': self.social.trust_for(agent, donor.id) * 0.1}, 'Ask a visible carrier before risking a trip')
+            if food >= 2 and h < self.survival.hungry:
+                talkable = [p for p in peers if validate(Action(ActionType.TALK, p.id), agent, world, resources, self.social)]
+                if talkable:
+                    peer = max(talkable, key=lambda p: (self.social.trust_for(agent, p.id), p.id))
+                    add('SOCIALIZE', peer.id, [Action(ActionType.TALK, peer.id)], {'social': 10 + traits.get('sociability', 0.5) * 20, 'hunger': -h * 0.1}, 'Safe opportunity for a greeting')
+        if food >= reserve and agent.energy > self.survival.rest_energy:
+            add('EXPLORE', None, [], {'curiosity': 5 + traits.get('curiosity', 0.5) * 8}, 'Explore while needs are supplied')
+        add('WAIT', None, [Action(ActionType.WAIT)], {'fallback': 1}, 'Wait for a valid opportunity')
+        return proposals
+
+    def decide(self, agent, world, resources, rng) -> Action:
+        plan = self.plans.get(agent.id)
+        if plan:
+            while plan.steps and plan.satisfied(agent, self.tick, self.social):
+                plan.pop(agent, self.tick)
+            if not plan.steps:
+                self.finish_plan(agent, 'completed', 'Goal completed')
+                plan = None
+        emergency_eat = agent.hunger >= self.survival.inefficient_hunger and edible_count(agent) > 0
+        emergency_rest = agent.energy <= self.survival.rest_energy and (not emergency_eat)
+        incoming = bool(self.social and any((r.recipient_id == agent.id for r in self.social.active_requests(agent))))
+        urgent_food_over_rest = bool(plan and plan.goal == 'REST' and (plan.rest_target == 90) and (agent.hunger >= self.survival.hungry) and (edible_count(agent) == 0) and (agent.energy > self.survival.rest_energy))
+        if plan and (urgent_food_over_rest or (emergency_eat and plan.goal != 'EAT') or (emergency_rest and plan.goal != 'REST') or (incoming and plan.goal != 'HELP_OTHER' and (not emergency_eat) and (not emergency_rest) and (agent.hunger < self.survival.inefficient_hunger))):
+            self.finish_plan(agent, 'interrupted', 'Important survival need or incoming request')
+            plan = None
+        if plan and (self.tick >= plan.deadline or self.tick - plan.last_progress > 80):
+            self.finish_plan(agent, 'failed', 'Plan deadline or progress limit')
+            plan = None
+        if plan:
+            action = plan.steps[0]
+            if action.kind == ActionType.COOK:
+                station = getattr(resources, 'cooking_station', None)
+                if station and station.id == action.target and (station.occupied_by not in (None, agent.id)):
+                    return Action(ActionType.WAIT, reasoning='Waiting for the shared campfire')
+            if not validate(action, agent, world, resources, self.social):
+                self.finish_plan(agent, 'failed', 'Next task or target became invalid')
+                plan = None
+        if plan is None:
+            proposals = self.candidates(agent, world, resources)
+            if emergency_eat:
+                proposals = [c for c in proposals if c.goal == 'EAT']
+            elif emergency_rest:
+                proposals = [c for c in proposals if c.goal == 'REST']
+            elif agent.hunger >= self.survival.inefficient_hunger:
+                proposals = [c for c in proposals if c.goal not in ('SOCIALIZE', 'EXPLORE', 'HELP_OTHER')]
+            retry = self.retry_after.get(agent.id)
+            if not (emergency_eat or emergency_rest):
+                proposals = [c for c in proposals if not (retry and retry[:2] == (c.goal, c.target) and self.tick < retry[2])]
+            ranked = sorted(proposals, key=lambda c: (-c.utility, c.goal, str(c.target)))
+            debug = self.debug.setdefault(agent.id, {})
+            debug['utilities'] = [{'goal': c.goal, 'score': round(c.utility, 2), 'components': c.components} for c in ranked[:5]]
+            for candidate in ranked:
+                steps = list(candidate.steps)
+                if candidate.goal in ('HELP_OTHER', 'GET_HELP'):
+                    response = self.social_choice(agent, world, resources, rng)
+                    if response is None:
+                        continue
+                    candidate.target = response.target
+                    steps = [response] + ([Action(ActionType.WAIT)] if response.kind == ActionType.REQUEST_FOOD else [])
+                elif candidate.goal == 'EXPLORE':
+                    destinations = [p for p in world.reachable(agent.position) if p != agent.position]
+                    if not destinations:
+                        continue
+                    candidate.target = rng.choice(destinations)
+                    steps = [Action(ActionType.MOVE_TO, candidate.target)]
+                if not steps:
+                    continue
+                plan = GoalPlan(candidate.goal, candidate.target, steps, self.tick, self.tick + 320, candidate.reason, candidate.rest_target)
+                plan.arm(agent, self.tick)
+                self.plans[agent.id] = plan
+                purpose = {'GATHER_FOOD': 'food', 'HUNT_FOOD': 'hunt', 'COOK_FOOD': 'cook', 'REST': 'rest', 'SOCIALIZE': 'social', 'EXPLORE': 'explore'}.get(plan.goal, plan.goal.lower())
+                agent.goal = Goal(purpose, plan.target) if plan.target is not None else None
+                self.stats['selected'] += 1
+                debug.update(goal=plan.goal, reason=plan.reason)
+                break
+        if plan is None:
+            return Action(ActionType.WAIT)
+        purpose = {'GATHER_FOOD': 'food', 'HUNT_FOOD': 'chicken meal', 'COOK_FOOD': 'cook', 'REST': 'rest', 'SOCIALIZE': 'social', 'EXPLORE': 'explore'}.get(plan.goal, plan.goal.lower())
+        agent.goal = Goal(purpose, plan.target) if plan.target is not None else None
+        self.debug.setdefault(agent.id, {})['sequence'] = [step.kind.value for step in plan.steps]
+        step = plan.steps[0]
+        if step.kind == ActionType.COOK:
+            station = getattr(resources, 'cooking_station', None)
+            if station and station.occupied_by not in (None, agent.id):
+                return Action(ActionType.WAIT, reasoning='Waiting for the shared campfire')
+        return step if step.kind == ActionType.WAIT else Action(step.kind, step.target, plan.reason, step.request_id, step.item)
+
+    def hunting_choice(self, agent, world, resources, commit=True):
         wildlife = getattr(resources, "wildlife", None)
-        if (wildlife is None or agent.food or agent.inventory.quantity("raw_chicken")
+        if (wildlife is None or edible_count(agent) or agent.inventory.quantity("raw_chicken")
                 or agent.hunger < max(65, self.survival.hungry)
                 or agent.energy < max(40, wildlife.settings.minimum_energy+12)
                 or agent.inventory.used >= agent.inventory.capacity
                 or self.tick < self.hunt_checks.get(agent.id, 0)):
             return None
-        self.hunt_checks[agent.id] = self.tick+20
+        if commit:self.hunt_checks[agent.id] = self.tick+20
         risk = agent.personality.get("risk_aversion", .5)
         # A reachable berry patch is preferable to a risky nearby pursuit.
         for bush, stock in resources.stocks().items():
@@ -131,7 +295,7 @@ class RuleBasedDecisionProvider:
                 candidates.append((-score, steps, chicken.id))
         if candidates:
             target = min(candidates)[2]
-            agent.goal = Goal("hunt", target)
+            if commit:agent.goal = Goal("hunt", target)
             return Action(ActionType.HUNT, target,
                           "Hungry, no carried berries, scarce reachable berries; short pursuit for one raw supply.")
         return None
@@ -177,7 +341,7 @@ class RuleBasedDecisionProvider:
                 return refuse
         peers = [other for other in social.agents.values()
                  if other.id != agent.id and social.nearby(agent, other)]
-        if peers and agent.hunger >= self.survival.hungry and agent.food == 0:
+        if peers and agent.hunger >= self.survival.hungry and edible_count(agent) == 0:
             if any(r.requester_id == agent.id and any(p.id == r.recipient_id for p in peers)
                    for r in social.active_requests(agent)):
                 return Action(ActionType.WAIT)

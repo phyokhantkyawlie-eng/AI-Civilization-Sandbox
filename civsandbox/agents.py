@@ -68,12 +68,12 @@ class Agent:
 
 
 PERSONALITIES = (
-    ("Generous", {"early_bird": 0.9, "empathy": 0.95, "cooperation": 0.9, "sharing": 0.95,
+    ("Generous", {"early_bird": 0.9, "nature_affinity": 0.95, "resource_focus": 0.55, "empathy": 0.95, "cooperation": 0.9, "sharing": 0.95,
                   "trust_gain_rate": 1.0, "risk_aversion": 0.2, "sociability": 0.55, "curiosity": 0.5}),
-    ("Selfish", {"early_bird": 0.4, "empathy": 0.15, "cooperation": 0.2, "sharing": 0.1,
+    ("Selfish", {"early_bird": 0.4, "nature_affinity": 0.3, "resource_focus": 0.95, "empathy": 0.15, "cooperation": 0.2, "sharing": 0.1,
                  "trust_gain_rate": 1.0, "risk_aversion": 0.3, "sociability": 0.25, "curiosity": 0.5}),
-    ("Cautious", {"early_bird": 0.15, "empathy": 0.55, "cooperation": 0.5, "sharing": 0.5,
+    ("Cautious", {"early_bird": 0.15, "nature_affinity": 0.65, "resource_focus": 0.65, "empathy": 0.55, "cooperation": 0.5, "sharing": 0.5,
                   "trust_gain_rate": 0.4, "risk_aversion": 0.9, "sociability": 0.3, "curiosity": 0.3}),
-    ("Friendly", {"early_bird": 0.6, "empathy": 0.8, "cooperation": 0.85, "sharing": 0.8,
+    ("Friendly", {"early_bird": 0.6, "nature_affinity": 0.5, "resource_focus": 0.5, "empathy": 0.8, "cooperation": 0.85, "sharing": 0.8,
                   "trust_gain_rate": 1.0, "risk_aversion": 0.25, "sociability": 0.95, "curiosity": 0.7}),
 )

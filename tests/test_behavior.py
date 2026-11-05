@@ -186,7 +186,7 @@ def test_long_run_resource_conservation_and_need_bounds():
         assert all(0 <= a.hunger <= 100 and 0 <= a.energy <= 100 and 0 <= a.food <= 5
                    and sim.world.walkable(a.position) for a in sim.agents)
     gathered = sum(c.before-c.after for c in sim.resources.changes if c.reason == "gather")
-    eaten = sum(e["action"] == "EAT" and e.get("executed") for e in sim.events)
+    eaten = sum(e["action"] == "EAT" and e.get("executed") and e.get("item", "berries") == "berries" for e in sim.events)
     assert gathered == eaten + sum(a.food for a in sim.agents)
     assert {e["action"] for e in sim.events} >= {"MOVE_TO", "GATHER", "EAT", "REST"}
     assert all(0 <= stock <= 5 for stock in sim.resources.stocks().values())

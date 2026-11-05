@@ -26,7 +26,7 @@ def test_shortage_natural_requests_and_accounting(seed):
         assert 0 <= answer["tick"]-req["tick"] < sim.social.request_lifetime
         assert set(answer["memory_created_for"]) == set(answer["trust_changes"])
     gathered = sum(c.reason == "gather" for c in sim.resources.changes)
-    eaten = sum(e["action"] == "EAT" and e.get("executed") for e in sim.events)
+    eaten = sum(e["action"] == "EAT" and e.get("executed") and e.get("item", "berries") == "berries" for e in sim.events)
     assert initial + gathered - eaten == sum(a.food for a in sim.agents)
 
 

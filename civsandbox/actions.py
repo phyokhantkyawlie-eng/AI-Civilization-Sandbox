@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from .inventory import ITEM_DEFINITIONS
+from .inventory import ITEM_DEFINITIONS, select_food
 from .agents import Agent
 from .resources import Resources
 from .world import Position, World
@@ -12,6 +12,7 @@ class ActionType(str, Enum):
     MOVE_TO = "MOVE_TO"
     GATHER = "GATHER"
     HUNT = "HUNT"
+    COOK = "COOK"
     EAT = "EAT"
     REST = "REST"
     WAIT = "WAIT"
@@ -27,6 +28,7 @@ class Action:
     target: Position | str | None = None
     reasoning: str = ""
     request_id: str | None = None
+    item: str | None = None
 
 
 SOCIAL_ACTIONS = {ActionType.REQUEST_FOOD, ActionType.SHARE_FOOD,
@@ -40,6 +42,8 @@ def valid_position(target) -> bool:
 
 def validate(action: Action, agent: Agent, world: World, resources: Resources, social=None, *, final=False) -> bool:
     if not isinstance(action, Action) or not isinstance(action.kind, ActionType):
+        return False
+    if action.item is not None and (action.kind != ActionType.EAT or not isinstance(action.item, str)):
         return False
     if agent.incapacitated_until and action.kind not in (ActionType.REST, ActionType.WAIT):
         return False
@@ -65,10 +69,14 @@ def validate(action: Action, agent: Agent, world: World, resources: Resources, s
     if action.kind == ActionType.HUNT:
         wildlife = getattr(resources, "wildlife", None)
         return wildlife is not None and wildlife.can_hunt(agent, action.target, world, final=final)
+    if action.kind == ActionType.COOK:
+        station = getattr(resources, "cooking_station", None)
+        return (station is not None and action.target == station.id
+                and station.can_cook(agent, world, resources.tick, final=final))
     if action.target is not None:
         return False
     if action.kind == ActionType.EAT:
-        return agent.food > 0 and agent.hunger > 0
+        return agent.hunger > 0 and select_food(agent, action.item) is not None
     if action.kind == ActionType.REST:
         return agent.energy < 100
     return action.kind == ActionType.WAIT
@@ -81,6 +89,10 @@ def execute(action: Action, agent: Agent, world: World, resources: Resources, ti
     if action.kind == ActionType.HUNT:
         if not resources.wildlife.complete(agent, action.target):
             return False
+    elif action.kind == ActionType.COOK:
+        if not agent.inventory.convert("raw_chicken", "cooked_chicken"):
+            return False
+        resources.cooking_station.release(agent.id)
     elif action.kind in SOCIAL_ACTIONS:
         social.perform(action, agent)
     elif action.kind == ActionType.MOVE_TO:
@@ -94,8 +106,9 @@ def execute(action: Action, agent: Agent, world: World, resources: Resources, ti
         agent.inventory.add("berries")
         agent.energy = max(0, agent.energy - 2)
     elif action.kind == ActionType.EAT:
-        agent.inventory.remove("berries")
-        agent.hunger = max(0, agent.hunger - ITEM_DEFINITIONS["berries"].hunger_reduction)
+        item = select_food(agent, action.item)
+        agent.inventory.remove(item)
+        agent.hunger = max(0, agent.hunger - ITEM_DEFINITIONS[item].hunger_reduction)
     elif action.kind == ActionType.REST:
         agent.energy = min(100, agent.energy + 8)
     agent.current_action = action.kind.value

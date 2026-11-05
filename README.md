@@ -4,7 +4,25 @@ CSC472 Artificial Intelligence final project for a two-student team. **Animated 
 
 
 
-## Current wildlife — Stage 2
+## Current gameplay — Stage 3: cooking and offline goal planning
+
+The local `RuleBasedDecisionProvider` now ranks explainable utility candidates and retains a bounded action queue. Goals include eating, gathering, hunting, cooking, resting, socializing, responding to requests, asking for food, waiting and exploration. Emergency survival priorities override optional activity. Personality, needs, nutrition, travel, daylight, station waiting and commitments influence selection; seeded randomness remains limited to exploration and social willingness.
+
+The shared **campfire** is a blocked terrain tile with reachable adjacent interaction positions. Placement preserves access to every other previously reachable tile. Its Ready/Busy status appears on the map and in the normal header. Cooking reserves the station for one NPC, takes **5 simulation seconds** by default (`COOK_SECONDS=5`), and converts exactly **one raw chicken into one cooked chicken at completion**. Cancellation releases the station and retains uncooked ingredients.
+
+The central item catalog defines berries at **35 hunger reduction**, cooked chicken at **65**, and raw chicken as inedible. Eating removes one selected edible item. Existing berry gathering/sharing and inventory capacity rules remain valid. A chicken-meal plan can execute HUNT → travel → COOK → EAT through the same validator and scheduler used by every NPC.
+
+Select an NPC, press **F3**, then **P** to inspect the selected goal, top utility scores, reason, remaining tasks and last replanning/failure reason. Press P again for the existing inspector. Ordinary needs/inventory controls and original walking sprites remain available; cooking uses safe idle artwork and a real activity indicator.
+
+```bash
+python -m civsandbox --provider rule-based --scenario food_shortage --seed 7
+python -m pytest -q
+python -m civsandbox.experiments --provider rule-based --runs 3 --ticks 4800 --seed 7 --scenario food_shortage
+```
+
+Use fresh social histories or the isolated experiment runner for reproducible checks. See [STAGE3_COOKING_AI.md](STAGE3_COOKING_AI.md) for actual counts, utility definitions, tests and limitations. Earlier stage notes below describe their historical behavior; raw chicken can now be cooked.
+
+## Wildlife baseline — Stage 2 (historical)
 
 Two living chickens now inhabit the existing village. Their local IDLE/WANDER/FLEE state machine pecks, rests, wanders and escapes nearby active NPCs using the same walkable grid. Programmatic cream-colored chickens, pecking motions and a fleeing `!` need no new artwork or dependencies. Existing NPC walking/idle sheets remain unchanged.
 

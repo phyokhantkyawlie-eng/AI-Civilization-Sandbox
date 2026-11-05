@@ -36,6 +36,7 @@ class Resources:
         if type(capacity) is not int or capacity < 1 or type(replenish_interval) is not int or replenish_interval < 1:
             raise ValueError("Resource capacity and interval must be positive integers")
         self.wildlife = None
+        self.cooking_station = None
         self.tick = 0
         self.capacity = capacity
         self.replenish_interval = replenish_interval

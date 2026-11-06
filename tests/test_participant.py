@@ -1,5 +1,4 @@
 """Human commands use the existing scheduler, physical world and validators."""
-from collections import Counter
 import pytest
 
 from civsandbox.actions import Action, ActionType

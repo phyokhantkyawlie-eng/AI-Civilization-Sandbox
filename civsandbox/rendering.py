@@ -8,7 +8,6 @@ from .feedback import Feedback
 from .participant_ui import ParticipantUI
 from .characters import CHARACTERS
 from .history import timestamp
-from .inventory import ITEM_NAMES
 from .ui_state import (activity, hunger_status, energy_status, StatusThresholds,
                        CHARACTER_ROLES, inventory_lines, goal_label, relationship_summary, action_progress)
 from .sprites import CharacterAssets, FOOT_ANCHOR, FRAME_SIZE

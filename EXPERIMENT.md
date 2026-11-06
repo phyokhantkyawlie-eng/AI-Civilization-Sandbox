@@ -1,47 +1,20 @@
-# Social memory experiment
+# Experiment runner — offline release
 
-Research question: How does access to social memory affect cooperation and decisions under food scarcity?
-
-From the activated project environment:
+Use python -m civsandbox.experiments. Providers: rule-based and mock. Scenarios: normal_survival (default-world alias), food_shortage, social_memory (paired shortage comparison), hunting_decisions (seven initial profiles), plus default for compatibility. --runs chooses seeds seed…seed+runs−1 per stratum; --ticks chooses .25-second ticks. --memory-mode paired/on/off selects conditions. --profile applies only to hunting_decisions; other uses fail rather than silently ignoring it.
 
 ```bash
-python -m civsandbox.experiments --provider rule-based --runs 3 --ticks 300 --seed 42 --scenario food_shortage
-python -m civsandbox.experiments --provider mock --runs 2 --ticks 100 --seed 42
+python -m civsandbox.experiments --provider rule-based --scenario social_memory --runs 5 --ticks 12000 --seed 7 --memory-mode paired
+python -m civsandbox.experiments --scenario hunting_decisions --profile exhausted --runs 5 --ticks 2400 --seed 7 --memory-mode on
 ```
 
-Each seed produces MEMORY_OFF and MEMORY_ON trials. Each trial creates a fresh provider, simulation, RNG, relationship map and memory history, with no persistence path. The initial-state hash covers the physical map, agents, resources and RNG state. Seeds increment from --seed. Memory-off context excludes interaction history and trust, and the local policy's trust lookup returns zero. Current observations and active requests remain available. Provider caches never carry between trials.
+Each invocation creates a timestamped folder under experiments/ or --output-root. configuration.json records algorithm/provider/model=None, parameters, seeds and profiles. summary.json contains genuine rows, grouped statistics and paired differences; trials.csv exports the same rows. Failed rows retain an error type without sensitive exception text, and later trials continue. Exports update after each trial and on interruption. Summary replacement is atomic; an interrupted CSV may need regeneration from the intact summary.
 
-Each timestamped UTC output folder contains configuration.json, trials.csv and summary.json. JSON uses null for unavailable quantities; CSV uses empty cells. Final directed trust is a JSON object in each CSV row. A failed trial is retained and excluded from statistical summaries, and subsequent trials continue. Keyboard interruption saves completed rows. Trial errors expose exception types only.
+Trials use fresh Observer agents/providers/plans/caches/RNGs, neutral trust, empty history and memory_path=None. Private .env/social/world saves are not loaded. Fingerprints include physical agents/personality/items, terrain/resources/station, clocks/settings and RNGs, excluding the treatment flag. Pairs require completed ON/OFF matches with identical hashes and matching scenario/profile/seed. D profiles do not overwrite one another in pairing.
 
-Metric definitions:
+Whole-trial counters stream independently of the 4,096-event engine window. Needs/activity totals use every completed NPC tick; trajectories cap at 1,001 points. No renderer or real-world sleep is needed. Legacy tick_seconds and hidden call-budget compatibility inputs cannot activate external behavior. External providers are rejected before trial construction; no SDK/key is required.
 
-- Requests count social events with result pending, excluding duplicated executed-action logs.
-- Shares count completed one-unit food transfers. Refusals count completed refusals.
-- Cooperation rate is shares / (shares + refusals). Expired/unanswered requests are reported separately. This measures willingness among resolved responses, not overall welfare.
-- Survival rate is unavailable. The simulation does not model death, so reporting 100% would not measure survival.
-- Average hunger is the sum of post-tick hunger across NPCs divided by NPC-tick observations. Initial hunger is excluded.
-- Final trust contains every NPC's outgoing trust values, including audit trust when recall is off.
-- Invalid action rate is engine rejections plus rejected model choices divided by completed NPC action opportunities. An invalid choice followed by a valid fallback counts once as invalid. Cooldowns and timeouts are not invalid actions.
-- Gemini calls count dispatched generation attempts, including failed requests.
-- Fallback count counts NPC-ticks whose provider status indicates fallback, including pending requests and cooldowns. Rule-based selection has zero AI fallbacks.
-- Duration includes measured trial wall seconds and simulated seconds (completed ticks × .25). Failed partial trials retain completed tick counts.
+AI_EVALUATION.md defines every denominator and reports actual results. Undefined rates are null/unavailable. Means/sample SD use available completed observations. Approximate normal 95% mean intervals require at least five homogeneous seed-level observations; mixed profile/scenario pooled intervals are withheld. Paired differences are ON minus OFF. No significance test or universal memory benefit is claimed.
 
-Condition means, sample standard deviations and paired MEMORY_ON minus MEMORY_OFF differences use completed trials. Pairs require both trials and identical initial hashes. Each metric has its own available-value count. At least five observations are required to display approximate 95% normal confidence intervals for a mean or mean paired difference. These intervals assume independent seed-level observations and are descriptive approximations. Small samples cannot support strong conclusions. No significance tests are claimed.
+NPC death is absent: survival_rate remains null. Operational availability is separately labeled. Requested cooperation excludes voluntary offers and unresolved requests. Activity labels are exclusive per NPC tick; hunt time includes pursuit. Food conservation checks actual items. Current API-call counts are zero. Historical exports from earlier metric/algorithm versions must not be pooled as current trials.
 
-Offline seeds reproduce decisions and outcomes given identical configuration and code. Wall durations vary. Gemini model sampling and network timing make live outputs stochastic. Live trials run at .25 wall seconds per tick, allowing pending requests time to complete. The existing 12-tick stale-response rule still applies.
-
-External-provider CLI execution is disabled in the offline-first build. Use rule-based or mock. API columns remain in the export schema for compatibility and are zero for current offline runs. Historical external-provider notes are archival only.
-
-Normal game history is ignored even if MEMORY_PATH is configured. Trials start with neutral trust and empty memories. Avoid interpreting audit trust stored in MEMORY_OFF as knowledge the agents could access. Initial food inequality, fixed NPC processing order, limited personalities, a single map scenario, and the absence of death mechanics constrain generalization.
-
-The initial offline pilot used seeds 42–44 for 300 ticks per condition. Observed requests/shares/refusals were 8/0/8, 24/1/23 and 18/1/17 for MEMORY_OFF, and 6/1/5, 10/2/8 and 10/1/9 for MEMORY_ON. This small pilot demonstrates the export pipeline and is insufficient to establish a memory benefit. The full suite passed 137 tests with the optional live test skipped.
-
-## Stage 3 survival counters
-
-New per-trial exports add gathering_actions (committed gathers), hunting_attempts (accepted pursuit starts), hunting_successes (committed rewards), cooking_completions (committed raw-to-cooked conversions), meals_consumed (committed EAT counts by item), incapacitations (entered recovery states), failed_plans and interrupted_plans. These are counts, not rates. Missing planner statistics on a provider are unavailable rather than fabricated. initial_food_items/final_food_items permit conservation checks. Existing hunger_series and average_hunger retain their definitions: average across every sampled NPC tick; no sample means unavailable. Catalog/cook timing and the initial campfire are now part of configuration/fingerprints. Old result files do not contain these counters and must not be presented as Stage 3 measurements.
-
-## Stage 4 conversation counters
-
-Exports also contain completed_sessions and canceled_sessions (SESSION transition counts), dialogue_turns (delivered authored turns), thanks_turns (delivered turns with purpose thanks), campfire_conversations (completed sessions explicitly selected for campfire company), and voluntary_food_transfers (committed OFFER_FOOD events). Counts are taken before shutdown cancellation and include no presentation-only repeats. Normal logs are bounded; experiment runs reserve a larger event window for the specified duration.
-
-Requested shares remain separate from voluntary offers. The historical cooperation rate remains requested shares / (requested shares + refusals); it excludes voluntary offers and is unavailable with no resolved requests. Do not silently interpret that rate as all helping behavior. Stage 4 changes interaction duration and trust weights; earlier exports are historical and not directly comparable. See STAGE4_CONVERSATIONS.md for the new genuine pilot. Its three paired seeds produced identical memory-mode outcomes, so it does not demonstrate a memory advantage.
+Batch RAM/file size scales with the requested output-row count, although per-trial logs/traces/trajectories/ID tracking are bounded. Generated experiments/ and artifacts/ remain ignored. The final 55 executions include repeated deterministic B/C ON controls; they are not 55 independent observations of one effect.

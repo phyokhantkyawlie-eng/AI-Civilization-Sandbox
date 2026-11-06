@@ -10,7 +10,8 @@ def test_real_charts_and_decision_exports(tmp_path):
     folder = tmp_path/"pilot"
     rows = run_batch(Settings(provider="rule-based"), 1, 12, 42, folder)
     charts = render(folder)
-    assert len(list(charts.glob("*.png"))) == 6
+    assert len(list(charts.glob("*.png"))) == 11
+    assert (charts/"gathering_hunting_choices.png").exists()
     assert all(p.stat().st_size > 1000 for p in charts.glob("*.png"))
     decisions = json.loads((charts/"decisions.json").read_text())
     assert decisions and all(d["provider"] == "rule-based" for d in decisions)

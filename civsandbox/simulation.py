@@ -204,7 +204,9 @@ class Simulation:
                 if isinstance(action, Action) and isinstance(action.kind, ActionType) and action.kind in SOCIAL_ACTIONS:
                     self.social.reject(action, agent)
                 self.events.append({"tick": self.tick, "agent": agent.name,
-                                    "action": "REJECTED", "reason": "action failed execution validation"})
+                                    "action": "REJECTED", "actor_id": agent.id,
+                                    "requested_action": proposed_action,
+                                    "reason": "action failed execution validation"})
                 agent.goal = None
                 action = Action(ActionType.WAIT)
                 execute(action, agent, self.world, self.resources, self.tick, self.social)

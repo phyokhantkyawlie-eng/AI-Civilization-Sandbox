@@ -1,4 +1,4 @@
-# Development guide — offline polish and persistence Stage 6
+# Development guide — final offline release Stage 7
 
 ## Direction and launch
 
@@ -148,3 +148,13 @@ savegame.py format civsandbox-world version 1 stores committed physical/social/r
 F5 explicitly replaces only an existing supported full-world slot; foreign/legacy formats and failed atomic replacements preserve the prior file. F9 confirms and restores paused. Full-world loading has no legacy social memory_path, so closing a loaded world cannot overwrite unrelated normal social history. Continue saving it explicitly with F5. New normal games retain the old social-only shutdown persistence. CLI --load restores mode unless explicitly overridden; headless loads use Observer Mode. --save writes after headless ticks; --save-file chooses the interactive slot. No automatic full-world load/save is added.
 
 Retention is explicit: full saves retain the latest 200 news entries, 120 dialogue turns, existing 20 memories per NPC and 512 resource-ledger records. Raw debug events/planner caches and transient presentation queues restart. F5 is a single replaceable checkpoint; use another --save-file path to keep separate worlds. Keep private data in ignored data/, saves/ or *.civsave.json; never commit personal histories. No existing private file is migrated or removed. The 1100×750 logical layout remains; optional --window-scale 0.85/1.25 scales final presentation and transforms mouse targets back to logical coordinates. Verify native macOS/Retina scaling manually. See STAGE6_POLISH_PERSISTENCE.md. Pre-stage recovery: dce1d43.
+
+## Stage 7 evaluation/release conventions
+
+experiments.py now supports normal_survival, food_shortage, social_memory and hunting_decisions profiles, with paired/on/off memory selection. measurements.py streams exact whole-trial counts independently of the 4,096-event window. Needs/activity totals sample every completed NPC tick; exported trajectories cap at 1,001 points and traces at 100. Never evaluate a long trial by counting only retained tail events. Private persistence is never read, and pairing matches scenario/profile/seed plus physical/RNG hashes. Mixed-stratum confidence intervals are withheld.
+
+GOAL_SELECTED auditing records actual new goals; existing PLAN outcome events stay compatible. REJECTED records identify the requested action. Neither changes utility weights, goal order, RNG calls or world effects. Results render 11 genuine plots; mortality/missing metrics remain unavailable. Mock is an offline adapter, not language-model research data. External evaluation providers are rejected and the obsolete network wait branch is removed.
+
+Cleanup is narrow: verified unused rendering/test imports and obsolete runner metadata/waits were removed. phase1a and tested optional external-adapter serialization code remain preserved. Root requirements are used by game/tests/assets/evaluation and contain no Google SDK requirement. Legacy compatibility parameters remain where callers depend on them, explicitly labeled.
+
+Recovery tag: codex/stage7-baseline at d88109d. Preserve private data/.env, original art and prototype files byte for byte during release application. Generated artifacts/stage7 evidence stays ignored. Current guides are README, ARCHITECTURE, GAMEPLAY_GUIDE, AI_EVALUATION, EXPERIMENT, RESULTS_GUIDE, DEMO_GUIDE and FINAL_VERIFICATION; older STAGE* reports are historical.

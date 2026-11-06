@@ -1,55 +1,97 @@
-# CSC472 presentation plan
+# CSC472 demonstration — about 7 minutes 40 seconds
 
-Suggested running time is 7 minutes 20 seconds. Prepare the virtual environment and open the three demonstration modes before presenting. All commands start from the project root with source .venv/bin/activate.
-
-## 0:00–0:40 · Introduce the sandbox
-
-Explain that four autonomous agents share a small resource-limited village. The research question asks whether access to social memory changes cooperation and decision-making. Identify Mira, Nyra, Kairo and Ren by their original green, purple, blue and red artwork.
-
-## 0:40–1:20 · Explain the architecture
-
-Use ARCHITECTURE.md. Show the pipeline from observations through a provider, a structured action, validation, execution and world updates. Explain that the fixed-tick simulation runs separately from graphics and can run headlessly.
-
-## 1:20–2:20 · Mode A, civilization and needs
+Rehearse with the existing .venv from the project root. This is offline classical AI, not ML/LLM reasoning. Use a new temporary history directory to protect personal saves:
 
 ```bash
-MEMORY_PATH=/tmp/csc472-demo-a.json python -m civsandbox --provider rule-based --scenario default --seed 42
+cd "/Users/phyokhantkyaw/Phyo-Workspace/AI Civilization Sandbox"
+source .venv/bin/activate
+CIV_DEMO_DIR="$(mktemp -d)"
+MEMORY_PATH="$CIV_DEMO_DIR/social.json" python -m civsandbox --provider rule-based --seed 7 --save-file "$CIV_DEMO_DIR/world.civsave.json"
 ```
 
-Use a new history filename for a fresh rehearsal. Point out autonomous BFS movement, food gathering, eating and resting. Pause with Space, change speed with arrows or buttons, and click a character to inspect needs and personality. Describe hunger/energy management as survival-related behavior and disclose that death is not modeled.
+## 0:00–0:35 — Project and characters
 
-## 2:20–3:30 · Mode B, food shortage and social decisions
+Introduce four autonomous villagers: Mira green, Nyra purple, Kairo blue and Ren red. Explain local utility scoring, retained task plans, BFS and finite-state behavior. Numeric personalities influence choices, not guaranteed character scripts.
+
+## 0:35–1:20 — Autonomous survival
+
+Show names, clock, needs and inventory. Space pauses; use 2×/4× briefly to show completed gathering, eating and resting. Click a bush for real stock/regrowth. Food changes only at validated completion. Default abundance may produce no hunting; that is expected.
+
+## 1:20–2:00 — Shortage and social outcomes
+
+Close the first window; launch the same engine with another fresh history:
 
 ```bash
-MEMORY_PATH=/tmp/csc472-demo-b.json python -m civsandbox --provider rule-based --scenario food_shortage --seed 42
+MEMORY_PATH="$CIV_DEMO_DIR/shortage.json" python -m civsandbox --provider rule-based --scenario food_shortage --seed 7 --save-file "$CIV_DEMO_DIR/shortage.civsave.json"
 ```
 
-Point out unequal food and hunger, requests, responses, food transfers or refusals, trust changes and attributed speech bubbles. A refusal is a valid outcome. Present what the agents actually do during the run rather than promising a particular share. Speech templates and reaction labels are explicitly attributed to rules/events.
+Show unequal supplies/needs and an actual request/response, then N/C history. Do not promise sharing: refusal is valid. Speech must come from accepted nearby sessions. Show directed trust and relevant bounded memory in F3 or nearby inspection.
 
-## 3:30–4:20 · Local decision-making
+## 2:00–2:45 — Chickens and conditional hunting
 
-Show decisions.py: needs priorities, persistent goals, BFS, and personality/trust-weighted social willingness. Show the Action interface and shared validator. Explain that the game is offline-first; mock means an offline test adapter, never a real model. External adapters are archived and not enabled by normal launch commands.
+Explain wandering, pecking, fleeing, energy, pursuit cost, claims and cooking access. Stocked villagers prefer edible inventory; failure grants no meat. Use observed events rather than promising a hunt in this live minute.
 
-## 4:20–5:00 · Social memory
-
-Use the Trust and Memory inspector tabs. Explain directed relationships, relevant bounded recall and MEMORY_ENABLED. Historical audit values can be collected even when the provider cannot recall them. Each experiment trial begins with neutral relationships, empty history and a fresh provider.
-
-## 5:00–6:30 · Mode C, measured results
+For a short presentation, close the prior window and load the genuine prepared checkpoint:
 
 ```bash
-python -m civsandbox.results experiments/final_verification_20261103 --show
+python -m civsandbox --load artifacts/stage7/demo_cooking.civsave.json --save-file "$CIV_DEMO_DIR/cooking.civsave.json"
 ```
 
-Show cooperation, shares/refusals, hunger trajectories and directed trust. Use the trial table and recent-decision slider. State the provider, three seed pairs and 120-tick duration. Explain per-run variation and standard-deviation bands. Survival is marked unavailable. This is a small offline pilot, not a strong causal conclusion about model intelligence.
+Its provenance is explicit: seed 7 autonomously reached accepted cooking at tick 677 after a successful hunt and genuine starvation recovery; a normal Participant handoff canceled unfinished cooking while retaining Mira's one real raw chicken. It is a prepared saved moment, not invented food or another natural trial. Generated evidence is ignored by Git; if this file is absent, rehearse a normal Participant hunt/cook or use the regeneration recipe below.
 
-To regenerate a fresh paired pilot:
+## 2:45–3:30 — Cooking
+
+The save opens paused, controlling Mira beside the campfire. Resume, inspect raw inventory with I, then E → Cook. Choose cooking promptly after resuming; menus pause time. Wait for conversion, then eat. The verified script completed cooking at tick 698 and eating at 709, reducing hunger 100→35. A recovery interruption retains ingredients; do not hide it or invent a meal. Idle art plus an honest activity indicator is used because no full cooking sprite sheet exists.
+
+## 3:30–4:20 — Social memory
+
+Talk/request/offer through E when valid, or inspect an actual recorded interaction. Show consent/share/refuse choices if offered. No provider chooses the player's response. Explain that MEMORY_OFF hides past social recall/trust while retaining current needs, observations and requests. Refusal/cancellation must not be presented as a forced cooperative outcome.
+
+## 4:20–5:10 — Explain an AI decision
+
+F3 → P shows actual utilities, selected goal, public reason, queued steps and replanning. Explain needs → goal/retained plan → BFS travel → timed validation/execution → updates. Emergency needs can interrupt commitments. Weights are manual; seeded variation is not training or LLM reasoning.
+
+## 5:10–5:50 — Participant Mode and persistence
+
+M chooses another existing character without rebuilding state. Demonstrate WASD/E/I and the other three autonomous villagers. F5 saves; F9 confirms and restores paused, releasing unfinished work without free rewards. Choose a demo --save-file path to avoid replacing a personal slot.
+
+## 5:50–7:05 — Genuine results
 
 ```bash
-python -m civsandbox.experiments --provider rule-based --runs 3 --ticks 120 --seed 42 --scenario food_shortage
+python -m civsandbox.results artifacts/stage7/release_evaluation --show
 ```
 
-## 6:30–7:20 · Limits and future work
+Show memory comparison, cooperation, gathering/hunting rates and food availability. State five seed pairs and 12,000 ticks per memory condition. There were 55 executions, but duplicated shortage-ON controls are not extra independent seeds. Mean request-response cooperation was 0.319 OFF / 0.321 ON; the tiny paired change has uncertainty including zero, and hunger/energy moved slightly unfavorably. Four pairs matched on these metrics. No benefit was established. Mortality survival is unavailable; operational availability is a separate proxy. SD bars show variation, not significance.
 
-Discuss the single village scenario, four fixed personalities, stable NPC processing order, temporary corridor overlap, small samples and absent death mechanics. Future work could evaluate more seeds/scenarios and more complete local utility scoring. End with the executed verification results in FINAL_VERIFICATION.md.
+Use AI_EVALUATION.md for denominators. If evidence is absent, generate it first; never substitute placeholders.
 
-The gameplay overhaul adds paced activities, a normal needs/inventory panel and F3 developer details. Allow several seconds to gather/eat and complete social exchanges. Click bushes to show stock/regrowth. Stored experiment examples and the Stage 8 ZIP are pre-overhaul snapshots. Explain their code version when presenting them; no new research experiment was executed during the overhaul.
+## 7:05–7:40 — Verification and limits
+
+Use FINAL_VERIFICATION.md for actual tests. Disclose five seeds, fixed personalities/order, known-map berry routing, contested gathers, coarse night rest, temporary corridor overlap, bounded histories and absent death/ML. Native visual smoothness needs a human check; SDL dummy tests do not establish it. Resource reservations/fairness and broader trials are possible future work, not implemented features.
+
+## Optional genuine checkpoint regeneration
+
+This waits for a real accepted cook, then performs the ordinary control handoff; it never adds items:
+
+```bash
+python - <<'PY'
+from pathlib import Path
+from civsandbox.simulation import Simulation
+from civsandbox.savegame import save_game
+sim = Simulation(7, scenario='food_shortage')
+last = 0
+for _ in range(2000):
+    sim.step()
+    fresh = [e for e in sim.events if e['event_id'] > last]
+    last = max(e['event_id'] for e in fresh)
+    cook = next((e for e in fresh if e.get('activity_action') == 'COOK' and e.get('accepted_start') and sim.social.agents[e['actor_id']].recovery_grace_until > sim.tick + sim.progress.timing.cook_ticks + 2), None)
+    if cook:
+        sim.set_participant(cook['actor_id'])
+        save_game(sim, Path('artifacts/stage7/demo_cooking.civsave.json'), cook['actor_id'])
+        print('Prepared actual cooking handoff at tick', sim.tick)
+        break
+else:
+    raise RuntimeError('No cooking opportunity observed; do not fabricate one')
+sim.close()
+PY
+```

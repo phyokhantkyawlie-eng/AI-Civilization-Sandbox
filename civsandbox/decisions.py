@@ -334,6 +334,9 @@ class RuleBasedDecisionProvider:
                 purpose = {'GATHER_FOOD': 'food', 'HUNT_FOOD': 'hunt', 'COOK_FOOD': 'cook', 'REST': 'rest', 'SOCIALIZE': 'social', 'EXPLORE': 'explore'}.get(plan.goal, plan.goal.lower())
                 agent.goal = Goal(purpose, plan.target) if plan.target is not None else None
                 self.stats['selected'] += 1
+                self.audit_events.append({'tick':self.tick,'agent':agent.name,'actor_id':agent.id,
+                                          'action':'GOAL_SELECTED','goal':plan.goal,
+                                          'target':plan.target,'reason':plan.reason})
                 if plan.goal == 'HUNT_FOOD':
                     self.stats['hunting_selected'] += 1
                     self.audit_events.append({'tick': self.tick, 'agent': agent.name,

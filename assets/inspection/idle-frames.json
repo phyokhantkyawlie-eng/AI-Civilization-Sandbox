@@ -1,0 +1,1118 @@
+{
+  "mira": {
+    "character": "mira",
+    "source": "mira_idle.png",
+    "sha256": "6a00ecae96b51aa95ad4ef952e70eb31e1f6db1c2b1a7cc550b77c9475c0b318",
+    "size": [
+      1086,
+      1448
+    ],
+    "mode": "RGBA",
+    "alpha": [
+      0,
+      255
+    ],
+    "counts": {
+      "down": 4,
+      "left": 4,
+      "right": 4,
+      "up": 4
+    },
+    "frames": [
+      {
+        "direction": "down",
+        "column": 0,
+        "cell": [
+          0,
+          0,
+          272,
+          362
+        ],
+        "foreground": [
+          79,
+          47,
+          243,
+          324
+        ]
+      },
+      {
+        "direction": "down",
+        "column": 1,
+        "cell": [
+          272,
+          0,
+          543,
+          362
+        ],
+        "foreground": [
+          64,
+          45,
+          227,
+          324
+        ]
+      },
+      {
+        "direction": "down",
+        "column": 2,
+        "cell": [
+          543,
+          0,
+          814,
+          362
+        ],
+        "foreground": [
+          49,
+          48,
+          212,
+          324
+        ]
+      },
+      {
+        "direction": "down",
+        "column": 3,
+        "cell": [
+          814,
+          0,
+          1086,
+          362
+        ],
+        "foreground": [
+          37,
+          49,
+          201,
+          324
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 0,
+        "cell": [
+          0,
+          362,
+          272,
+          724
+        ],
+        "foreground": [
+          80,
+          40,
+          234,
+          315
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 1,
+        "cell": [
+          272,
+          362,
+          543,
+          724
+        ],
+        "foreground": [
+          65,
+          34,
+          220,
+          315
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 2,
+        "cell": [
+          543,
+          362,
+          814,
+          724
+        ],
+        "foreground": [
+          53,
+          40,
+          205,
+          315
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 3,
+        "cell": [
+          814,
+          362,
+          1086,
+          724
+        ],
+        "foreground": [
+          41,
+          43,
+          194,
+          315
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 0,
+        "cell": [
+          0,
+          724,
+          272,
+          1086
+        ],
+        "foreground": [
+          86,
+          31,
+          238,
+          304
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 1,
+        "cell": [
+          272,
+          724,
+          543,
+          1086
+        ],
+        "foreground": [
+          69,
+          26,
+          224,
+          304
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 2,
+        "cell": [
+          543,
+          724,
+          814,
+          1086
+        ],
+        "foreground": [
+          55,
+          32,
+          204,
+          304
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 3,
+        "cell": [
+          814,
+          724,
+          1086,
+          1086
+        ],
+        "foreground": [
+          43,
+          33,
+          196,
+          304
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 0,
+        "cell": [
+          0,
+          1086,
+          272,
+          1448
+        ],
+        "foreground": [
+          86,
+          20,
+          243,
+          294
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 1,
+        "cell": [
+          272,
+          1086,
+          543,
+          1448
+        ],
+        "foreground": [
+          68,
+          17,
+          224,
+          294
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 2,
+        "cell": [
+          543,
+          1086,
+          814,
+          1448
+        ],
+        "foreground": [
+          55,
+          20,
+          212,
+          294
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 3,
+        "cell": [
+          814,
+          1086,
+          1086,
+          1448
+        ],
+        "foreground": [
+          42,
+          21,
+          198,
+          295
+        ]
+      }
+    ],
+    "scale": 0.6365280289330922
+  },
+  "nyra": {
+    "character": "nyra",
+    "source": "nyra_idle.png",
+    "sha256": "22f16db70a2b3503dbc72910c8d97d09c7e1fcc75141748b0f234fadadeeb32e",
+    "size": [
+      1024,
+      1536
+    ],
+    "mode": "RGBA",
+    "alpha": [
+      0,
+      254
+    ],
+    "counts": {
+      "down": 4,
+      "left": 4,
+      "right": 4,
+      "up": 4
+    },
+    "frames": [
+      {
+        "direction": "down",
+        "column": 0,
+        "cell": [
+          0,
+          0,
+          256,
+          384
+        ],
+        "foreground": [
+          30,
+          41,
+          237,
+          366
+        ]
+      },
+      {
+        "direction": "down",
+        "column": 1,
+        "cell": [
+          256,
+          0,
+          512,
+          384
+        ],
+        "foreground": [
+          29,
+          36,
+          233,
+          366
+        ]
+      },
+      {
+        "direction": "down",
+        "column": 2,
+        "cell": [
+          512,
+          0,
+          768,
+          384
+        ],
+        "foreground": [
+          26,
+          36,
+          232,
+          366
+        ]
+      },
+      {
+        "direction": "down",
+        "column": 3,
+        "cell": [
+          768,
+          0,
+          1024,
+          384
+        ],
+        "foreground": [
+          24,
+          44,
+          230,
+          366
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 0,
+        "cell": [
+          0,
+          384,
+          256,
+          768
+        ],
+        "foreground": [
+          33,
+          31,
+          240,
+          360
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 1,
+        "cell": [
+          256,
+          384,
+          512,
+          768
+        ],
+        "foreground": [
+          33,
+          28,
+          238,
+          361
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 2,
+        "cell": [
+          512,
+          384,
+          768,
+          768
+        ],
+        "foreground": [
+          31,
+          31,
+          236,
+          361
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 3,
+        "cell": [
+          768,
+          384,
+          1024,
+          768
+        ],
+        "foreground": [
+          29,
+          35,
+          235,
+          360
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 0,
+        "cell": [
+          0,
+          768,
+          256,
+          1152
+        ],
+        "foreground": [
+          27,
+          24,
+          234,
+          359
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 1,
+        "cell": [
+          256,
+          768,
+          512,
+          1152
+        ],
+        "foreground": [
+          26,
+          20,
+          233,
+          359
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 2,
+        "cell": [
+          512,
+          768,
+          768,
+          1152
+        ],
+        "foreground": [
+          25,
+          23,
+          233,
+          359
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 3,
+        "cell": [
+          768,
+          768,
+          1024,
+          1152
+        ],
+        "foreground": [
+          25,
+          29,
+          233,
+          359
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 0,
+        "cell": [
+          0,
+          1152,
+          256,
+          1536
+        ],
+        "foreground": [
+          31,
+          33,
+          233,
+          358
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 1,
+        "cell": [
+          256,
+          1152,
+          512,
+          1536
+        ],
+        "foreground": [
+          31,
+          26,
+          233,
+          358
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 2,
+        "cell": [
+          512,
+          1152,
+          768,
+          1536
+        ],
+        "foreground": [
+          30,
+          28,
+          232,
+          358
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 3,
+        "cell": [
+          768,
+          1152,
+          1024,
+          1536
+        ],
+        "foreground": [
+          31,
+          38,
+          232,
+          358
+        ]
+      }
+    ],
+    "scale": 0.5465648854961832
+  },
+  "kairo": {
+    "character": "kairo",
+    "source": "kairo_idle.png",
+    "sha256": "44cafcb9436f199bb80d002a13b4b429d3e27e6e003bd608199ac1e893f692d7",
+    "size": [
+      1086,
+      1448
+    ],
+    "mode": "RGBA",
+    "alpha": [
+      0,
+      255
+    ],
+    "counts": {
+      "down": 4,
+      "left": 4,
+      "right": 4,
+      "up": 4
+    },
+    "frames": [
+      {
+        "direction": "down",
+        "column": 0,
+        "cell": [
+          0,
+          0,
+          272,
+          362
+        ],
+        "foreground": [
+          83,
+          36,
+          245,
+          331
+        ]
+      },
+      {
+        "direction": "down",
+        "column": 1,
+        "cell": [
+          272,
+          0,
+          543,
+          362
+        ],
+        "foreground": [
+          53,
+          34,
+          214,
+          332
+        ]
+      },
+      {
+        "direction": "down",
+        "column": 2,
+        "cell": [
+          543,
+          0,
+          809,
+          362
+        ],
+        "foreground": [
+          23,
+          36,
+          184,
+          332
+        ]
+      },
+      {
+        "direction": "down",
+        "column": 3,
+        "cell": [
+          809,
+          0,
+          1086,
+          362
+        ],
+        "foreground": [
+          0,
+          40,
+          160,
+          332
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 0,
+        "cell": [
+          0,
+          362,
+          272,
+          724
+        ],
+        "foreground": [
+          92,
+          19,
+          247,
+          323
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 1,
+        "cell": [
+          272,
+          362,
+          543,
+          724
+        ],
+        "foreground": [
+          62,
+          14,
+          216,
+          323
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 2,
+        "cell": [
+          543,
+          362,
+          814,
+          724
+        ],
+        "foreground": [
+          32,
+          19,
+          187,
+          323
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 3,
+        "cell": [
+          814,
+          362,
+          1086,
+          724
+        ],
+        "foreground": [
+          2,
+          22,
+          158,
+          323
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 0,
+        "cell": [
+          0,
+          724,
+          272,
+          1086
+        ],
+        "foreground": [
+          83,
+          14,
+          242,
+          309
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 1,
+        "cell": [
+          272,
+          724,
+          543,
+          1086
+        ],
+        "foreground": [
+          53,
+          12,
+          210,
+          309
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 2,
+        "cell": [
+          543,
+          724,
+          809,
+          1086
+        ],
+        "foreground": [
+          23,
+          14,
+          180,
+          309
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 3,
+        "cell": [
+          809,
+          724,
+          1086,
+          1086
+        ],
+        "foreground": [
+          0,
+          17,
+          156,
+          309
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 0,
+        "cell": [
+          0,
+          1086,
+          272,
+          1448
+        ],
+        "foreground": [
+          86,
+          9,
+          247,
+          306
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 1,
+        "cell": [
+          272,
+          1086,
+          543,
+          1448
+        ],
+        "foreground": [
+          56,
+          6,
+          217,
+          306
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 2,
+        "cell": [
+          543,
+          1086,
+          811,
+          1448
+        ],
+        "foreground": [
+          26,
+          9,
+          187,
+          306
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 3,
+        "cell": [
+          811,
+          1086,
+          1086,
+          1448
+        ],
+        "foreground": [
+          0,
+          10,
+          161,
+          306
+        ]
+      }
+    ],
+    "scale": 0.6057529610829103
+  },
+  "ren": {
+    "character": "ren",
+    "source": "ren_idle.png",
+    "sha256": "3ae49916049b1ce4687b0227e9867e1dc183ce662c4e7a1e093a7968e4b52d74",
+    "size": [
+      1086,
+      1448
+    ],
+    "mode": "RGBA",
+    "alpha": [
+      202,
+      252
+    ],
+    "counts": {
+      "down": 4,
+      "left": 4,
+      "right": 4,
+      "up": 4
+    },
+    "frames": [
+      {
+        "direction": "down",
+        "column": 0,
+        "cell": [
+          0,
+          0,
+          272,
+          362
+        ],
+        "foreground": [
+          84,
+          45,
+          255,
+          348
+        ]
+      },
+      {
+        "direction": "down",
+        "column": 1,
+        "cell": [
+          272,
+          0,
+          543,
+          362
+        ],
+        "foreground": [
+          63,
+          41,
+          232,
+          348
+        ]
+      },
+      {
+        "direction": "down",
+        "column": 2,
+        "cell": [
+          543,
+          0,
+          814,
+          362
+        ],
+        "foreground": [
+          44,
+          45,
+          213,
+          348
+        ]
+      },
+      {
+        "direction": "down",
+        "column": 3,
+        "cell": [
+          814,
+          0,
+          1086,
+          362
+        ],
+        "foreground": [
+          25,
+          47,
+          193,
+          348
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 0,
+        "cell": [
+          0,
+          362,
+          272,
+          724
+        ],
+        "foreground": [
+          87,
+          27,
+          251,
+          323
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 1,
+        "cell": [
+          272,
+          362,
+          543,
+          724
+        ],
+        "foreground": [
+          66,
+          23,
+          230,
+          323
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 2,
+        "cell": [
+          543,
+          362,
+          814,
+          724
+        ],
+        "foreground": [
+          46,
+          26,
+          210,
+          323
+        ]
+      },
+      {
+        "direction": "left",
+        "column": 3,
+        "cell": [
+          814,
+          362,
+          1086,
+          724
+        ],
+        "foreground": [
+          28,
+          28,
+          192,
+          323
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 0,
+        "cell": [
+          0,
+          724,
+          272,
+          1081
+        ],
+        "foreground": [
+          85,
+          12,
+          249,
+          308
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 1,
+        "cell": [
+          272,
+          724,
+          543,
+          1081
+        ],
+        "foreground": [
+          64,
+          7,
+          230,
+          308
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 2,
+        "cell": [
+          543,
+          724,
+          814,
+          1081
+        ],
+        "foreground": [
+          45,
+          12,
+          210,
+          308
+        ]
+      },
+      {
+        "direction": "right",
+        "column": 3,
+        "cell": [
+          814,
+          724,
+          1086,
+          1081
+        ],
+        "foreground": [
+          27,
+          14,
+          191,
+          308
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 0,
+        "cell": [
+          0,
+          1081,
+          272,
+          1448
+        ],
+        "foreground": [
+          87,
+          5,
+          252,
+          301
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 1,
+        "cell": [
+          272,
+          1081,
+          543,
+          1448
+        ],
+        "foreground": [
+          66,
+          0,
+          231,
+          301
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 2,
+        "cell": [
+          543,
+          1081,
+          814,
+          1448
+        ],
+        "foreground": [
+          46,
+          3,
+          211,
+          301
+        ]
+      },
+      {
+        "direction": "up",
+        "column": 3,
+        "cell": [
+          814,
+          1081,
+          1086,
+          1448
+        ],
+        "foreground": [
+          27,
+          6,
+          193,
+          301
+        ]
+      }
+    ],
+    "scale": 0.5907590759075908
+  }
+}

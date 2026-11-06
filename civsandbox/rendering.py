@@ -21,7 +21,7 @@ ORIGIN = (20, 78)
 
 
 class Renderer:
-    def __init__(self, animation_fps=8.0, window_scale=1.0):
+    def __init__(self, animation_fps=8.0, window_scale=1.0, idle_fps=4.0):
         pygame.display.init()
         pygame.font.init()
         if window_scale not in (.85,1.0,1.25):
@@ -49,6 +49,17 @@ class Renderer:
         self.memory_page = 0
         self.assets = CharacterAssets()
         self.animation_fps = animation_fps
+        self.idle_fps = idle_fps
+        self.animation_preview = False
+        self.preview_character = 0
+        self.preview_clock = 0.0
+        self.preview_animators = {}
+        for key in ("mira", "nyra", "kairo", "ren"):
+            self.preview_animators[key] = {
+                d: SpriteAnimator(self.assets.frames[key], self.animation_fps,
+                                  idle_frames=self.assets.idle_frames[key], idle_fps=self.idle_fps)
+                for d in ("down", "left", "right", "up")}
+        self.preview_background = 0
         self.characters = {}
         self.character_rects = {}
         self.chicken_rects = {}
@@ -245,6 +256,8 @@ class Renderer:
         simulation.selected_id = self.selected_id
         self.draw_controls(simulation)
         self.participant_ui.draw(self, simulation)
+        if self.animation_preview:
+            self.draw_animation_preview(simulation)
         if self.screen is not self.display:
             pygame.transform.smoothscale(self.screen,self.display.get_size(),self.display)
         pygame.display.flip()
@@ -254,7 +267,8 @@ class Renderer:
         for agent in simulation.agents:
             if agent.id not in self.characters:
                 self.characters[agent.id] = CharacterView(
-                    agent.position, SpriteAnimator(self.assets.for_agent(agent), self.animation_fps))
+                    agent.position, SpriteAnimator(self.assets.for_agent(agent), self.animation_fps,
+                                    idle_frames=self.assets.idle_for_agent(agent), idle_fps=self.idle_fps))
                 self.characters[agent.id].animator.update(0,False,agent.facing)
             elif self.characters[agent.id].logical_position != agent.position:
                 # draw() used without tick callbacks (e.g. a restored snapshot): snap, never cut corners.
@@ -264,16 +278,25 @@ class Renderer:
         for agent in simulation.agents:
             if agent.id not in self.characters:
                 self.characters[agent.id] = CharacterView(
-                    agent.position, SpriteAnimator(self.assets.for_agent(agent), self.animation_fps))
+                    agent.position, SpriteAnimator(self.assets.for_agent(agent), self.animation_fps,
+                                    idle_frames=self.assets.idle_for_agent(agent), idle_fps=self.idle_fps))
                 self.characters[agent.id].animator.update(0,False,agent.facing)
             else:
                 self.characters[agent.id].capture(agent.position, seconds)
-            if simulation.progress.held(agent) or simulation.social.active_requests(agent):
-                self.characters[agent.id].snap(agent.position)
-                self.characters[agent.id].animator.update(0, False, agent.facing)
+            view = self.characters[agent.id]
+            view.idle_direction = agent.facing if (simulation.progress.held(agent) or simulation.social.active_requests(agent)) else None
+            if not view.segments:
+                view.animator.update(0, False, view.idle_direction)
 
     def advance_animation(self, elapsed, paused=False, **timing):
         if not paused:
+            real_dt = elapsed/timing.get("speed", 1)
+            self.preview_clock += real_dt
+            moving = self.preview_clock % 3 < 1
+            if self.animation_preview:
+                for rows in self.preview_animators.values():
+                    for direction, animator in rows.items():
+                        animator.update(real_dt, moving, direction)
             self.feedback.advance(elapsed)
             self.feedback.advance_reading(elapsed/timing.get("speed",1))
         for view in self.characters.values():
@@ -290,11 +313,36 @@ class Renderer:
         if agent.id == self.selected_id:
             pygame.draw.ellipse(self.screen, (255, 239, 147), (foot[0]-14, foot[1]-6, 28, 11), 2)
         rect = pygame.Rect(foot[0]-FOOT_ANCHOR[0], foot[1]-FOOT_ANCHOR[1], *FRAME_SIZE)
-        state = self.feedback.state_for(agent.id, view.animator.moving)
-        sprite_state = self.feedback.sprite_state(state)
-        frame = view.animator.frame if sprite_state == "walk" else view.animator.frames[view.animator.direction][0]
+        # Activity feedback maps to generic idle until dedicated action art is provided.
+        frame = view.animator.frame
         self.screen.blit(frame, rect)
         self.character_rects[agent.id] = rect
+
+    def draw_animation_preview(self, simulation):
+        """Overlay in the existing game: cached art, no simulation writes."""
+        keys = ("mira", "nyra", "kairo", "ren")
+        key = keys[self.preview_character]
+        panel = pygame.Rect(35,100,835,625)
+        color = ((35,45,55),(228,233,235),(90,135,75))[self.preview_background]
+        pygame.draw.rect(self.screen,color,panel)
+        ink = (25,35,45) if self.preview_background == 1 else (240,225,195)
+        self.screen.blit(self.font.render(f"Animation preview: {key.title()} | 1-4 character | B background | F8 close",True,ink),(50,110))
+        self.screen.blit(self.small.render("Each row: walking idle reference | new idle frames | live WALK -> IDLE (1s / 2s)",True,ink),(50,139))
+        for row,direction in enumerate(("down","left","right","up")):
+            y=171+row*112
+            self.screen.blit(self.small.render(direction.upper(),True,ink),(50,y+35))
+            frames=[self.assets.frames[key][direction][0]]+self.assets.idle_frames[key][direction]
+            for col,frame in enumerate(frames):
+                x=130+col*95
+                self.screen.blit(pygame.transform.smoothscale(frame,(80,100)),(x,y))
+                pygame.draw.line(self.screen,(210,90,70),(x,y+96),(x+80,y+96))
+            animator=self.preview_animators[key][direction]
+            self.screen.blit(pygame.transform.smoothscale(animator.frame,(80,100)),(690,y))
+            self.screen.blit(self.small.render(f"{animator.state} {animator.index}",True,ink),(775,y+35))
+        engaged = [a for a in simulation.agents if simulation.social.engaged(a)]
+        label = "Live conversation: " + (", ".join(f"{a.name} {self.characters[a.id].animator.direction}/{self.characters[a.id].animator.state}" for a in engaged) or "none active; close preview to observe villagers")
+        self.screen.blit(self.small.render(label,True,ink),(50,640))
+        self.screen.blit(self.small.render("Preview changes no positions, dialogue timers, or social state. Red lines mark foot anchors.",True,ink),(50,682))
 
     def draw_controls(self, simulation):
         self.control_buttons = {}
@@ -706,6 +754,16 @@ def handle_event(event, simulation, ticker, renderer=None) -> bool:
         width,height=renderer.display.get_size()
         event=pygame.event.Event(event.type,{**event.dict,'pos':(round(event.pos[0]*WINDOW[0]/width),
                                                                round(event.pos[1]*WINDOW[1]/height))})
+    if renderer and event.type == pygame.KEYDOWN:
+        if event.key == pygame.K_F8:
+            renderer.animation_preview = not renderer.animation_preview
+            return True
+        if renderer.animation_preview and event.key in (pygame.K_1,pygame.K_2,pygame.K_3,pygame.K_4,pygame.K_b):
+            if event.key == pygame.K_b:
+                renderer.preview_background = (renderer.preview_background+1)%3
+            else:
+                renderer.preview_character = event.key-pygame.K_1
+            return True
     if renderer and renderer.participant_ui.handle(event, simulation, renderer):
         return True
     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and renderer:
@@ -777,9 +835,9 @@ def advance_frame(renderer, ticker, simulation, elapsed):
     renderer.advance_animation(remainder, simulation.paused, speed=ticker.speed)
 
 
-def run(simulation: Simulation, animation_fps=8.0, window_scale=1.0) -> None:
+def run(simulation: Simulation, animation_fps=8.0, window_scale=1.0, idle_fps=4.0) -> None:
     try:
-        renderer = Renderer(animation_fps,window_scale)
+        renderer = Renderer(animation_fps,window_scale,idle_fps)
         renderer.sync_characters(simulation)
         renderer.selected_id = simulation.player.agent_id if simulation.player else simulation.selected_id
         ticker = FixedTicker()

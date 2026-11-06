@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--scenario", choices=("default", "food_shortage"), default="default")
     parser.add_argument("--provider", choices=["mock", "rule-based"])
     parser.add_argument("--animation-fps", type=float, default=8.0)
+    parser.add_argument("--idle-fps", type=float, default=4.0)
     parser.add_argument("--window-scale", type=float, choices=(.85,1.0,1.25), default=1.0)
     parser.add_argument('--mode', choices=('observer', 'participant'), default=None)
     parser.add_argument('--character', choices=('mira', 'nyra', 'kairo', 'ren'), default='mira')
@@ -28,6 +29,8 @@ def main():
         parser.error('Headless CLI uses Observer Mode; Participant Mode requires interactive input')
     if not math.isfinite(args.animation_fps) or args.animation_fps <= 0:
         parser.error("--animation-fps must be finite and positive")
+    if not math.isfinite(args.idle_fps) or args.idle_fps <= 0:
+        parser.error("--idle-fps must be finite and positive")
     if args.ticks < 0:
         parser.error("--ticks must be nonnegative")
     try:
@@ -71,7 +74,7 @@ def main():
             print(json.dumps(simulation.snapshot(), sort_keys=True))
         else:
             from .rendering import run
-            run(simulation, args.animation_fps,args.window_scale)
+            run(simulation, args.animation_fps,args.window_scale,args.idle_fps)
     finally:
         simulation.close()
 

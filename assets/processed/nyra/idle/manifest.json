@@ -1,0 +1,279 @@
+{
+  "character": "nyra",
+  "source": "nyra_idle.png",
+  "sha256": "22f16db70a2b3503dbc72910c8d97d09c7e1fcc75141748b0f234fadadeeb32e",
+  "size": [
+    1024,
+    1536
+  ],
+  "mode": "RGBA",
+  "alpha": [
+    0,
+    254
+  ],
+  "counts": {
+    "down": 4,
+    "left": 4,
+    "right": 4,
+    "up": 4
+  },
+  "frames": [
+    {
+      "direction": "down",
+      "column": 0,
+      "cell": [
+        0,
+        0,
+        256,
+        384
+      ],
+      "foreground": [
+        30,
+        41,
+        237,
+        366
+      ]
+    },
+    {
+      "direction": "down",
+      "column": 1,
+      "cell": [
+        256,
+        0,
+        512,
+        384
+      ],
+      "foreground": [
+        29,
+        36,
+        233,
+        366
+      ]
+    },
+    {
+      "direction": "down",
+      "column": 2,
+      "cell": [
+        512,
+        0,
+        768,
+        384
+      ],
+      "foreground": [
+        26,
+        36,
+        232,
+        366
+      ]
+    },
+    {
+      "direction": "down",
+      "column": 3,
+      "cell": [
+        768,
+        0,
+        1024,
+        384
+      ],
+      "foreground": [
+        24,
+        44,
+        230,
+        366
+      ]
+    },
+    {
+      "direction": "left",
+      "column": 0,
+      "cell": [
+        0,
+        384,
+        256,
+        768
+      ],
+      "foreground": [
+        33,
+        31,
+        240,
+        360
+      ]
+    },
+    {
+      "direction": "left",
+      "column": 1,
+      "cell": [
+        256,
+        384,
+        512,
+        768
+      ],
+      "foreground": [
+        33,
+        28,
+        238,
+        361
+      ]
+    },
+    {
+      "direction": "left",
+      "column": 2,
+      "cell": [
+        512,
+        384,
+        768,
+        768
+      ],
+      "foreground": [
+        31,
+        31,
+        236,
+        361
+      ]
+    },
+    {
+      "direction": "left",
+      "column": 3,
+      "cell": [
+        768,
+        384,
+        1024,
+        768
+      ],
+      "foreground": [
+        29,
+        35,
+        235,
+        360
+      ]
+    },
+    {
+      "direction": "right",
+      "column": 0,
+      "cell": [
+        0,
+        768,
+        256,
+        1152
+      ],
+      "foreground": [
+        27,
+        24,
+        234,
+        359
+      ]
+    },
+    {
+      "direction": "right",
+      "column": 1,
+      "cell": [
+        256,
+        768,
+        512,
+        1152
+      ],
+      "foreground": [
+        26,
+        20,
+        233,
+        359
+      ]
+    },
+    {
+      "direction": "right",
+      "column": 2,
+      "cell": [
+        512,
+        768,
+        768,
+        1152
+      ],
+      "foreground": [
+        25,
+        23,
+        233,
+        359
+      ]
+    },
+    {
+      "direction": "right",
+      "column": 3,
+      "cell": [
+        768,
+        768,
+        1024,
+        1152
+      ],
+      "foreground": [
+        25,
+        29,
+        233,
+        359
+      ]
+    },
+    {
+      "direction": "up",
+      "column": 0,
+      "cell": [
+        0,
+        1152,
+        256,
+        1536
+      ],
+      "foreground": [
+        31,
+        33,
+        233,
+        358
+      ]
+    },
+    {
+      "direction": "up",
+      "column": 1,
+      "cell": [
+        256,
+        1152,
+        512,
+        1536
+      ],
+      "foreground": [
+        31,
+        26,
+        233,
+        358
+      ]
+    },
+    {
+      "direction": "up",
+      "column": 2,
+      "cell": [
+        512,
+        1152,
+        768,
+        1536
+      ],
+      "foreground": [
+        30,
+        28,
+        232,
+        358
+      ]
+    },
+    {
+      "direction": "up",
+      "column": 3,
+      "cell": [
+        768,
+        1152,
+        1024,
+        1536
+      ],
+      "foreground": [
+        31,
+        38,
+        232,
+        358
+      ]
+    }
+  ],
+  "scale": 0.5465648854961832
+}

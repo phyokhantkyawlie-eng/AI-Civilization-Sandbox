@@ -7,11 +7,17 @@ DIRECTIONS = ("down", "left", "right", "up")
 
 
 class SpriteAnimator:
-    def __init__(self, frames, fps=8.0):
+    def __init__(self, frames, fps=8.0, *, idle_frames=None, idle_fps=4.0):
         if not math.isfinite(fps) or fps <= 0:
             raise ValueError("Animation FPS must be finite and positive")
         if any(direction not in frames or len(frames[direction]) != 5 for direction in DIRECTIONS):
             raise ValueError("Each direction needs one idle and four walking frames")
+        if not math.isfinite(idle_fps) or idle_fps <= 0:
+            raise ValueError("Idle FPS must be finite and positive")
+        if idle_frames is not None and any(d not in idle_frames or not idle_frames[d] for d in DIRECTIONS):
+            raise ValueError("Idle frames require a nonempty sequence for every direction")
+        self.idle_frames = idle_frames or {d: [frames[d][0]] for d in DIRECTIONS}
+        self.idle_fps = idle_fps
         self.frames = frames
         self.fps = fps
         self.direction = "down"
@@ -24,20 +30,25 @@ class SpriteAnimator:
         direction = direction or self.direction
         if direction not in DIRECTIONS:
             raise ValueError("Unknown direction")
-        if not moving or not self.moving or direction != self.direction:
+        if bool(moving) != self.moving or direction != self.direction:
             self.elapsed = 0.0
         self.direction = direction
         self.moving = moving
-        if moving:
-            self.elapsed += dt
+        self.elapsed += dt
+
+    @property
+    def state(self):
+        return "walk" if self.moving else "idle"
 
     @property
     def index(self):
-        return 1 + int(self.elapsed*self.fps + 1e-9) % 4 if self.moving else 0
+        return (1 + int(self.elapsed*self.fps + 1e-9) % 4 if self.moving else
+                int(self.elapsed*self.idle_fps + 1e-9) % len(self.idle_frames[self.direction]))
 
     @property
     def frame(self):
-        return self.frames[self.direction][self.index]
+        rows = self.frames if self.moving else self.idle_frames
+        return rows[self.direction][self.index]
 
 
 def facing_between(start, end):
@@ -62,6 +73,7 @@ class CharacterView:
         self.animator = animator
         self.logical_position = position
         self.position = tuple(float(v) for v in position)
+        self.idle_direction = None  # simulation facing, applied only after visual arrival
         self.segments = deque()
         self.segment_elapsed = 0.0
 
@@ -99,7 +111,7 @@ class CharacterView:
         while self.segments:
             segment = self.segments[0]
             duration = min(dt, segment.seconds-self.segment_elapsed)
-            self.animator.update(duration/speed, segment.start != segment.end, facing_between(segment.start, segment.end))
+            self.animator.update(duration/speed, segment.start != segment.end, facing_between(segment.start, segment.end) or self.idle_direction)
             self.segment_elapsed += duration
             fraction = min(1.0, self.segment_elapsed/segment.seconds)
             self.position = tuple(a+(b-a)*fraction for a, b in zip(segment.start, segment.end))
@@ -112,8 +124,8 @@ class CharacterView:
             if dt <= 1e-12:
                 break
         if not self.segments:
-            if not tick_boundary:
-                self.animator.update(0, False)
+            if not tick_boundary or not self.animator.moving:
+                self.animator.update(dt/speed, False, self.idle_direction)
         else:
             segment = self.segments[0]
-            self.animator.update(0, segment.start != segment.end, facing_between(segment.start, segment.end))
+            self.animator.update(0, segment.start != segment.end, facing_between(segment.start, segment.end) or self.idle_direction)

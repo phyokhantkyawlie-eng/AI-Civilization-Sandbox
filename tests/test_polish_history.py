@@ -133,7 +133,7 @@ def test_loaded_facing_and_existing_idle_art_are_used(tmp_path):
         r.draw(loaded,FixedTicker())
         view=r.characters['npc-1']
         assert view.animator.direction=='left' and not view.animator.moving
-        assert r.assets.for_agent(loaded.agents[0])['left'][0] is view.animator.frame
+        assert r.assets.idle_for_agent(loaded.agents[0])['left'][0] is view.animator.frame
     finally:loaded.close();pygame.quit()
 
 

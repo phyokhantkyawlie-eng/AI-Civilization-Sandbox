@@ -78,3 +78,56 @@ Final Stage 7 evidence: **55 actual trials**, plus two **30,000-tick** profiling
 - [DEMO_GUIDE.md](DEMO_GUIDE.md): 5–8 minute presentation with genuine prepared evidence.
 
 Existing phase1a files and optional historical external adapters are preserved for recovery/compatibility. The normal factory and CLIs enable only rule-based/mock, and no external SDK is a runtime requirement. No private saves, keys or generated histories belong in commits. Native macOS play/Retina smoothness still requires the manual checklist; SDL dummy tests and chart inspection do not establish native visual approval.
+
+## Animated idle artwork integration (November 2026)
+
+The existing simulation now loads optional directional idle sequences alongside its unchanged walking assets. No additional game application is needed.
+
+```sh
+cd "/Users/phyokhantkyaw/Phyo-Workspace/AI Civilization Sandbox"
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m civsandbox --provider rule-based --mode observer --animation-fps 8 --idle-fps 4
+```
+
+Press **F8** (or **Fn+F8** on macOS) for the animation overlay. **1–4** selects Mira, Nyra, Kairo, Ren. **B** cycles dark, light, and grass backgrounds. All four directional rows display the old walking idle reference, the new idle poses, and an automatic one-second WALK / two-second IDLE preview. F8 closes the overlay. The real simulation continues underneath, and the overlay reports the directions and animation states of active conversation participants. Pause/resume with Space; animation freezes while paused. The preview only reads simulation state.
+
+For normal gameplay verification, close the overlay and observe villagers approach, stop, face each other, and speak. The existing social session sets `agent.facing`; the renderer applies it after the interpolated character reaches its destination. Both participants then loop their matching directional idle sequences. Speech bubbles, reading time, session locks, positions, and social outcomes remain controlled by the existing simulation. Resting, waiting, gathering, eating, and cooking use generic idle while stationary; there are no new action-specific animations.
+
+### Supplied idle sheets
+
+| Character | Stored original | Dimensions | Original mode / alpha range | Idle frames per direction |
+|---|---|---|---|---|
+| Mira | `assets/characters/mira_idle.png` | 1086 × 1448 | RGBA / 0–255 | 4 |
+| Nyra | `assets/characters/nyra_idle.png` | 1024 × 1536 | RGBA / 0–254 | 4 |
+| Kairo | `assets/characters/kairo_idle.png` | 1086 × 1448 | RGBA / 0–255 | 4 |
+| Ren | `assets/characters/ren_idle.png` | 1086 × 1448 | RGBA / 202–252 | 4 |
+
+The uploaded `kario_idle.png` is mapped to Kairo and preserved byte-for-byte under the canonical filename. Every sheet has DOWN, LEFT, RIGHT, UP rows with four stationary poses: 16 frames per character, 64 total. Pose variation is subtle; these are supplied poses, with no invented blink frames or generated artwork.
+
+`python -m civsandbox.prepare_idle_assets` processes only idle assets. `IDLE_COLUMNS` explicitly declares the inspected counts; new artwork must be reviewed before changing those counts. Row and column gutters are measured near the declared grid, and solid-art boundary intersections are rejected. A declared count of one supports a genuinely static directional idle. The original PNGs are untouched.
+
+Mira, Nyra, and Kairo retain their original alpha inside measured crops. Solid foreground components establish bounds with edge padding so distant translucent residue cannot distort sizing. Ren's alpha is mostly opaque even in the background: only exterior-connected near-neutral pale pixels are cleared (minimum RGB channel 195, maximum channel spread 28). Enclosed pale details and foreground alpha remain intact. Conservative extraction leaves faint fringes, most noticeable around Ren on dark backgrounds; aggressive outline removal was avoided. New art has some source proportion/pose differences from the walking sheets, so transitions can show those differences despite consistent scale and grounding.
+
+Processed assets are separate: `assets/processed/<character>/idle/<direction>/<index>.png`, plus a manifest with exact counts, source hash, crop rectangles, and scale. One scale is used for each whole idle sheet, matched to the existing front walking-idle height. Boot-region centers align horizontally, with the same 160 × 200 canvas and y=190 ground baseline as walking. In-game surfaces retain the existing 40 × 50 dimensions and foot anchor.
+
+`CharacterAssets` loads/caches frames once. A missing or incomplete optional idle set falls back to that character's original static directional poses, with one debug log per unavailable character per asset load. `SpriteAnimator` keeps its existing walking interface and FPS, adds optional `idle_frames` and configurable `idle_fps`, and resets progression only on state or facing transitions. `CharacterView` advances idle using render delta time, including time split at fixed simulation boundaries, and finishes visual travel before switching to idle.
+
+### Verification
+
+```sh
+python -m pytest -q
+```
+
+Automated coverage includes idle mapping/discovery, four directions, looping, transitions, last-facing preservation, static/missing/incomplete fallbacks, cached surfaces, fixed-tick versus render timing, pause, ground/canvas consistency, and real conversations without simulation changes. Existing walking tests remain in place. The saved-facing test now expects the optional idle pose when present.
+
+Inspection artifacts:
+
+- `assets/inspection/idle-frames.json`: original inspection and measured extraction metadata.
+- `assets/inspection/idle-contact-dark.png` and `idle-contact-light.png`: all 64 idle frames alongside 16 walking reference poses.
+- `assets/inspection/idle-conversation.png`: rendered Mira/ Ren conversation with directional idle and a real speech bubble.
+- `assets/inspection/idle-preview.png`: the in-game F8 overlay.
+
+SDL dummy video was used for automated rendering and screenshots. Native macOS window, keyboard, and perceived loop smoothness require the interactive checks above. No gameplay features or Participant Mode changes were included in this integration.
+
+Actual integration verification: full suite **386 passed, 1 skipped** (31.56 seconds); the skipped test requires a live API. After final optional-manifest validation and preview filtering adjustments, focused animation/regression tests were rerun: **55 passed** (1.92 seconds). Existing walking and inspection assets: **88 files matched byte-for-byte** against the project originals. Dark/light contact sheets and existing-game screenshots were generated; the dark contact sheet, Ren detail, conversation, and preview screenshots were visually reviewed.

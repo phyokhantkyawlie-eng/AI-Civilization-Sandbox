@@ -59,7 +59,7 @@ def test_three_ai_continue_but_never_choose_for_player():
     assert actor.id not in ai.calls
     assert set(ai.calls) == {a.id for a in sim.agents if a is not actor}
     assert actor.position == before and actor.food==0
-    assert actor.hunger > 25 and actor.energy < 90
+    assert actor.hunger > 25 and actor.energy == 90 and actor.energy_spent_micro > 0
     assert all(e['decision_source']=='player' for e in sim.events if e.get('actor_id')==actor.id and 'decision_source' in e)
 
 

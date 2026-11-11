@@ -21,6 +21,7 @@ class Agent:
     name: str
     position: Position
     color: tuple[int, int, int]
+    energy_spent_micro: int = 0
     hunger: int = 25
     energy: int = 90
     inventory: Inventory = field(default_factory=Inventory)
@@ -42,6 +43,7 @@ class Agent:
                  trust=None, memories=None):
         self.id, self.name, self.position, self.color = id, name, position, color
         self.hunger, self.energy = hunger, energy
+        self.energy_spent_micro = 0
         self.inventory = Inventory()
         self.food = food
         self.facing = "down"
@@ -65,7 +67,6 @@ class Agent:
     def advance_needs(self, *, hunger=True) -> None:
         if hunger:
             self.hunger = min(100, self.hunger + 1)
-        self.energy = max(0, self.energy - 1)
 
 
 PERSONALITIES = (

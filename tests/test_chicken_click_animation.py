@@ -134,8 +134,8 @@ def test_hunger_three_times_slower_energy_unchanged_and_time_based():
     for sim in (slow,old):
         for a in sim.agents:a.hunger=0;a.energy=100
     for _ in range(120):slow.step();old.step()
-    assert all(a.hunger==10 and a.energy==70 for a in slow.agents)
-    assert all(a.hunger==30 and a.energy==70 for a in old.agents)
+    assert all(a.hunger==10 and a.energy==100 and a.energy_spent_micro==600_000 for a in slow.agents)
+    assert all(a.hunger==30 and a.energy==100 and a.energy_spent_micro==600_000 for a in old.agents)
     fast=Simulation(42,WaitProvider());normal=Simulation(42,WaitProvider())
     f=FixedTicker();n=FixedTicker();f.speed=4
     for _ in range(40):f.advance(fast,.25);n.advance(normal,1)

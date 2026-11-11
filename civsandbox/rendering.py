@@ -5,6 +5,7 @@ from .simulation import FixedTicker, Simulation
 from .world import Tile
 from .animation import SpriteAnimator, CharacterView
 from .chicken_animation import ChickenView
+from .interact_animation import InteractionView, PHASES, draw_pose, draw_preview_target
 from .feedback import Feedback
 from .participant_ui import ParticipantUI
 from .characters import CHARACTERS
@@ -22,7 +23,8 @@ ORIGIN = (20, 78)
 
 
 class Renderer:
-    def __init__(self, animation_fps=8.0, window_scale=1.0, idle_fps=4.0):
+    def __init__(self, animation_fps=8.0, window_scale=1.0, idle_fps=4.0, *,
+                 enable_interact_animation=True, interact_animation_seconds=1.0):
         pygame.display.init()
         pygame.font.init()
         if window_scale not in (.85,1.0,1.25):
@@ -61,6 +63,13 @@ class Renderer:
                                   idle_frames=self.assets.idle_frames[key], idle_fps=self.idle_fps)
                 for d in ("down", "left", "right", "up")}
         self.preview_background = 0
+        self.enable_interact_animation = enable_interact_animation
+        self.interact_animation_seconds = interact_animation_seconds
+        self.interactions = {}
+        self.interact_preview = False
+        self.interact_preview_clock = 0.0
+        self.interact_preview_paused = False
+        self.interact_preview_frames = {}
         self.characters = {}
         self.character_rects = {}
         self.chicken_rects = {}
@@ -92,6 +101,7 @@ class Renderer:
             f"Recall: {recall} / History: {simulation.social.persistence_status}",
             True, (151, 175, 183)), (650, 53))
         self.sync_characters(simulation)
+        self.sync_interactions(simulation)
         self.feedback.consume(simulation.events, simulation.social)
         if simulation.paused:
             self.advance_animation(0, True)
@@ -264,6 +274,8 @@ class Renderer:
         self.participant_ui.draw(self, simulation)
         if self.animation_preview:
             self.draw_animation_preview(simulation)
+        if self.interact_preview:
+            self.draw_interact_preview()
         if self.screen is not self.display:
             pygame.transform.smoothscale(self.screen,self.display.get_size(),self.display)
         pygame.display.flip()
@@ -293,6 +305,15 @@ class Renderer:
             elif view.logical_position != chicken.position:
                 view.snap(chicken.position)
 
+    def sync_interactions(self, simulation, tick_boundary=False):
+        for actor in simulation.agents:
+            character = self.characters.get(actor.id)
+            if character:
+                if actor.id not in self.interactions:
+                    self.interactions[actor.id] = InteractionView(self.interact_animation_seconds)
+                view = self.interactions[actor.id]
+                view.sync(simulation,actor,character,self.enable_interact_animation,tick_boundary)
+
     def capture_tick(self, simulation, seconds):
         self.sync_chickens(simulation, seconds)
         for agent in simulation.agents:
@@ -308,7 +329,11 @@ class Renderer:
             if not view.segments:
                 view.animator.update(0, False, view.idle_direction)
 
+        self.sync_interactions(simulation,tick_boundary=True)
+
     def advance_animation(self, elapsed, paused=False, **timing):
+        for view in self.interactions.values():
+            view.advance(elapsed,paused)
         if not paused:
             real_dt = elapsed/timing.get("speed", 1)
             self.preview_clock += real_dt
@@ -334,9 +359,43 @@ class Renderer:
             pygame.draw.ellipse(self.screen, (255, 239, 147), (foot[0]-14, foot[1]-6, 28, 11), 2)
         rect = pygame.Rect(foot[0]-FOOT_ANCHOR[0], foot[1]-FOOT_ANCHOR[1], *FRAME_SIZE)
         # Activity feedback maps to generic idle until dedicated action art is provided.
-        frame = view.animator.frame
+        interaction = self.interactions.get(agent.id)
+        frame = (view.animator.idle_frames[interaction.direction][0]
+                 if interaction and interaction.active else view.animator.frame)
+        if interaction and interaction.active and interaction.direction == 'up':
+            interaction.draw(self.screen,foot)
         self.screen.blit(frame, rect)
+        if interaction and interaction.active and interaction.direction != 'up':
+            interaction.draw(self.screen,foot)
         self.character_rects[agent.id] = rect
+
+    def draw_interact_preview(self):
+        keys = ('mira','nyra','kairo','ren')
+        key = keys[self.preview_character]
+        panel = pygame.Rect(35,90,835,635)
+        pygame.draw.rect(self.screen,(35,45,49),panel,border_radius=8)
+        self.text(f'Gather prototype: {key.title()} | 1–4 character | F6 on/off | F7 close | Space pause', (48,102))
+        self.screen.blit(self.small.render('Unchanged idle art + pickup accents; no articulated arms. Preview never gathers food.',True,(226,204,153)),(48,132))
+        labels = ('IDLE',*PHASES,'LIVE')
+        for i,label in enumerate(labels):
+            self.screen.blit(self.small.render(label,True,(221,226,212)),(142+i*120,166))
+        for row,direction in enumerate(('down','left','right','up')):
+            y = 275+row*135
+            self.screen.blit(self.small.render(direction.upper(),True,(221,226,212)),(48,y-55))
+            cache_key=(key,direction)
+            if cache_key not in self.interact_preview_frames:
+                self.interact_preview_frames[cache_key]=pygame.transform.scale(self.assets.idle_frames[key][direction][0],(80,100))
+            frame=self.interact_preview_frames[cache_key]
+            for col in range(6):
+                foot=(163+col*120,y)
+                time=(col-1+.5)/4*self.interact_animation_seconds if 1<=col<=4 else self.interact_preview_clock
+                active=self.enable_interact_animation and col>0
+                draw_preview_target(self.screen,foot,direction)
+                if active and direction=='up':draw_pose(self.screen,foot,direction,time,self.interact_animation_seconds,scale=2)
+                self.screen.blit(frame,(foot[0]-40,foot[1]-96))
+                if active and direction!='up':draw_pose(self.screen,foot,direction,time,self.interact_animation_seconds,scale=2)
+        label = 'Enabled: 16 procedural direction/phase states; simulation frozen' if self.enable_interact_animation else 'DISABLED: idle fallback only; gameplay unchanged'
+        self.screen.blit(self.small.render(label,True,(226,204,153)),(48,705))
 
     def draw_animation_preview(self, simulation):
         """Overlay in the existing game: cached art, no simulation writes."""
@@ -405,6 +464,7 @@ class Renderer:
 
     def reset_after_load(self, simulation):
         self.characters.clear()
+        self.interactions.clear()
         self.character_rects.clear()
         self.chicken_rects.clear()
         self.chicken_views.clear()
@@ -758,6 +818,21 @@ def handle_event(event, simulation, ticker, renderer=None) -> bool:
         event=pygame.event.Event(event.type,{**event.dict,'pos':(round(event.pos[0]*WINDOW[0]/width),
                                                                round(event.pos[1]*WINDOW[1]/height))})
     if renderer and event.type == pygame.KEYDOWN:
+        if event.key == pygame.K_F6:
+            renderer.enable_interact_animation = not renderer.enable_interact_animation
+            renderer.sync_interactions(simulation)
+            renderer.notify('Gather prototype '+('enabled' if renderer.enable_interact_animation else 'disabled: original idle fallback'))
+            return True
+        if event.key == pygame.K_F7:
+            renderer.interact_preview = not renderer.interact_preview
+            renderer.participant_ui.stop(simulation)
+            return True
+        if renderer.interact_preview:
+            if event.key in (pygame.K_1,pygame.K_2,pygame.K_3,pygame.K_4):
+                renderer.preview_character = event.key-pygame.K_1
+            elif event.key == pygame.K_SPACE:
+                renderer.interact_preview_paused = not renderer.interact_preview_paused
+            return True
         if event.key == pygame.K_F8:
             renderer.animation_preview = not renderer.animation_preview
             return True
@@ -767,6 +842,8 @@ def handle_event(event, simulation, ticker, renderer=None) -> bool:
             else:
                 renderer.preview_character = event.key-pygame.K_1
             return True
+    if renderer and renderer.interact_preview and event.type != pygame.QUIT:
+        return True
     if renderer and renderer.participant_ui.handle(event, simulation, renderer):
         return True
     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and renderer:
@@ -842,6 +919,12 @@ def handle_event(event, simulation, ticker, renderer=None) -> bool:
 def advance_frame(renderer, ticker, simulation, elapsed):
     """Split one frame at logical tick boundaries, retaining continuous walk phase."""
     renderer.notification_seconds = max(0,renderer.notification_seconds-elapsed)
+    if renderer.interact_preview:
+        renderer.participant_ui.stop(simulation)
+        if not renderer.interact_preview_paused:
+            renderer.interact_preview_clock += elapsed
+        ticker.accumulator = 0
+        return
     if renderer.participant_ui.menu or simulation.input_blocked:
         renderer.participant_ui.stop(simulation)
         if simulation.input_blocked:
@@ -864,9 +947,13 @@ def advance_frame(renderer, ticker, simulation, elapsed):
     renderer.advance_animation(remainder, simulation.paused, speed=ticker.speed)
 
 
-def run(simulation: Simulation, animation_fps=8.0, window_scale=1.0, idle_fps=4.0) -> None:
+def run(simulation: Simulation, animation_fps=8.0, window_scale=1.0, idle_fps=4.0, *,
+        enable_interact_animation=True,interact_animation_seconds=1.0,interact_preview=False) -> None:
     try:
-        renderer = Renderer(animation_fps,window_scale,idle_fps)
+        renderer = Renderer(animation_fps,window_scale,idle_fps,
+                            enable_interact_animation=enable_interact_animation,
+                            interact_animation_seconds=interact_animation_seconds)
+        renderer.interact_preview = interact_preview
         renderer.sync_characters(simulation)
         renderer.selected_id = simulation.player.agent_id if simulation.player else simulation.selected_id
         ticker = FixedTicker()

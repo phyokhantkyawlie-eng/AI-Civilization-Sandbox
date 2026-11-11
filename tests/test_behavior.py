@@ -57,10 +57,10 @@ def test_eating_resting_and_needs_clamp():
     assert (agent.hunger, agent.energy) == (100, 0)
     agent.hunger, agent.energy = 25, 50
     agent.advance_needs()
-    assert (agent.hunger, agent.energy) == (26, 49)
+    assert (agent.hunger, agent.energy) == (26, 50)
     assert execute(Action(ActionType.MOVE_TO, (0, 1)), agent, world, resources, 2)
     assert agent.position in ((0, 0), (1, 1))  # either shortest-route first step
-    assert agent.energy == 48
+    assert agent.energy == 50 and agent.energy_spent_micro == 100_000
     tired = Agent("b", "Basil", (1, 0), (0, 0, 0), energy=1)
     assert execute(Action(ActionType.GATHER, (2, 0)), tired, world, resources, 2)
     assert tired.energy == 0 and tired.food == 1
@@ -170,7 +170,7 @@ def test_provider_injection_invalid_fallback_and_pause():
     sim.step()
     assert [a.position for a in sim.agents] == positions
     assert all(a.current_action == "WAIT" for a in sim.agents)
-    assert all(a.hunger == 26 and a.energy == 89 for a in sim.agents)
+    assert all(a.hunger == 26 and a.energy == 90 and a.energy_spent_micro == 20_000 for a in sim.agents)
     assert sum(e["action"] == "REJECTED" for e in sim.events) == 4
     sim.paused = True
     before = sim.snapshot()

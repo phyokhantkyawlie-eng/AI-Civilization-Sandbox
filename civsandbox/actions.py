@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .inventory import ITEM_DEFINITIONS, select_food
+from .energy import DEFAULT_ENERGY
 from .agents import Agent
 from .resources import Resources
 from .world import Position, World
@@ -91,16 +92,20 @@ def execute(action: Action, agent: Agent, world: World, resources: Resources, ti
     """Invalid actions are atomic no-ops. MOVE_TO advances one BFS step."""
     if not validate(action, agent, world, resources, social, final=True):
         return False
+    energy = getattr(resources, "energy_rules", DEFAULT_ENERGY)
     if action.kind == ActionType.ATTACK:
         if not resources.wildlife.attack(agent, action.target):
             return False
+        energy.spend(agent, energy.attack_cost)
     elif action.kind == ActionType.HUNT:
         if not resources.wildlife.complete(agent, action.target):
             return False
+        energy.spend(agent, energy.hunt_cost)
     elif action.kind == ActionType.COOK:
         if not agent.inventory.convert("raw_chicken", "cooked_chicken"):
             return False
         resources.cooking_station.release(agent.id)
+        energy.spend(agent, energy.cook_cost)
     elif action.kind in SOCIAL_ACTIONS:
         social.perform(action, agent)
     elif action.kind == ActionType.MOVE_TO:
@@ -108,16 +113,17 @@ def execute(action: Action, agent: Agent, world: World, resources: Resources, ti
         dx, dy = next_position[0]-agent.position[0], next_position[1]-agent.position[1]
         agent.facing = {(1, 0): "right", (-1, 0): "left", (0, 1): "down", (0, -1): "up"}[(dx, dy)]
         agent.position = next_position
-        agent.energy = max(0, agent.energy - 1)
+        hunting = agent.id in getattr(getattr(resources, "wildlife", None), "pursuits", {})
+        energy.spend(agent, energy.hunt_step_cost if hunting else energy.walk_cost)
     elif action.kind == ActionType.GATHER:
         resources.collect(action.target, tick, agent.id)
         agent.inventory.add("berries")
-        agent.energy = max(0, agent.energy - 2)
+        energy.spend(agent, energy.gather_cost)
     elif action.kind == ActionType.EAT:
         item = select_food(agent, action.item)
         agent.inventory.remove(item)
         agent.hunger = max(0, agent.hunger - ITEM_DEFINITIONS[item].hunger_reduction)
     elif action.kind == ActionType.REST:
-        agent.energy = min(100, agent.energy + 8)
+        energy.recover(agent)
     agent.current_action = action.kind.value
     return True

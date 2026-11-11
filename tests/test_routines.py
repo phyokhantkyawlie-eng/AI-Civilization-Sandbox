@@ -103,12 +103,12 @@ def test_rest_is_timed_and_eating_uses_authoritative_inventory():
     a = sim.agents[0]
     a.energy = 25
     sim.step()
-    assert a.energy == 24
+    assert a.energy == 25
     for _ in range(sim.progress.timing.rest_ticks-1):
         sim.step()
-    assert a.energy == 24
+    assert a.energy == 25
     sim.step()
-    assert a.energy == 31  # unchanged passive -1 plus a single +8 completion
+    assert a.energy == 33  # resting is not charged a simultaneous passive drain
     a.food, a.hunger = 1, 60
     sim.decision_provider = FixedAction(Action(ActionType.EAT))
     sim.step()

@@ -35,7 +35,7 @@ def initial_fingerprint(sim):
              "wildlife_rng": repr(sim.wildlife.rng.getstate()), "resources": sim.resources.stocks().__repr__(),
              "rng": repr(sim.rng.getstate()), "dialogue_rng":repr(sim.social.dialogue_rng.getstate()),
              "bushes":[asdict(b) for b in sim.resources.bushes.values()],
-             "configuration":{'clock':asdict(sim.clock),'survival':asdict(sim.survival),
+             "configuration":{'energy':asdict(sim.energy_rules),'clock':asdict(sim.clock),'survival':asdict(sim.survival),
                               'timing':asdict(sim.progress.timing),'social':asdict(sim.social.settings),
                               'wildlife':asdict(sim.wildlife.settings)}}
     return hashlib.sha256(json.dumps(state, sort_keys=True).encode()).hexdigest()
@@ -146,7 +146,7 @@ def run_trial(settings, seed, ticks, memory, scenario='food_shortage', tick_seco
     sim = Simulation(seed,provider,memory_enabled=memory,memory_path=None,scenario=SCENARIOS[scenario],
                      event_limit=4096,decision_trace_limit=100,timing=settings.action_timing,
                      day_clock=settings.day_clock,survival=settings.survival,
-                     wildlife_settings=settings.wildlife,social_settings=settings.social)
+                     wildlife_settings=settings.wildlife,social_settings=settings.social,energy_rules=settings.energy)
     prepare_scenario(sim,scenario,profile)
     row = {'seed':seed,'scenario':scenario,'profile':profile,
            'condition':'MEMORY_ON' if memory else 'MEMORY_OFF','provider':settings.provider,
@@ -291,7 +291,7 @@ def run_batch(settings, runs, ticks, seed, output, scenario='food_shortage', tic
               'seeds':list(range(seed,seed+runs)),'scenario':scenario,'profiles':profiles,
               'conditions':['MEMORY_ON' if m else 'MEMORY_OFF' for m in modes],
               'social':asdict(settings.social),'wildlife':asdict(settings.wildlife),
-              'day_clock':asdict(settings.day_clock),'survival':asdict(settings.survival),
+              'energy':asdict(settings.energy),'day_clock':asdict(settings.day_clock),'survival':asdict(settings.survival),
               'action_timing':asdict(settings.action_timing),'food_catalog':{k:asdict(v) for k,v in ITEM_DEFINITIONS.items()},
               'hunting_profiles':HUNTING_PROFILES if scenario=='hunting_decisions' else None,
               'engine_event_limit':4096,'maximum_trajectory_samples':1001}

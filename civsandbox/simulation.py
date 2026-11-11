@@ -17,6 +17,7 @@ from .characters import CHARACTERS
 from .occupancy import Occupancy
 from .daynight import DayClock
 from .survival import SurvivalRules
+from .energy import EnergyRules
 from .pacing import ActionProgress, ActionTiming
 from .player import PlayerController
 from .history import History
@@ -24,7 +25,7 @@ from .history import History
 
 class Simulation:
     def __init__(self, seed: int = 42, decision_provider: DecisionProvider | None = None,
-                 memory_enabled: bool = True, memory_path=None, scenario="default", event_limit=8192, decision_trace_limit=0, timing=None, day_clock=None, survival=None, wildlife_settings=None, social_settings=None):
+                 memory_enabled: bool = True, memory_path=None, scenario="default", event_limit=8192, decision_trace_limit=0, timing=None, day_clock=None, survival=None, wildlife_settings=None, social_settings=None, energy_rules=None):
         if scenario not in ("default", "food_shortage"):
             raise ValueError("Unknown scenario")
         self.clock = day_clock or DayClock()
@@ -55,6 +56,8 @@ class Simulation:
         else:
             self.resources = Resources(self.world)
         self.world, self.cooking_station = place_station(self.world, self.agents[0].position, {a.position for a in self.agents})
+        self.energy_rules = energy_rules or EnergyRules()
+        self.resources.energy_rules = self.energy_rules
         self.resources.cooking_station = self.cooking_station
         self.wildlife = Wildlife(self.world, self.agents, seed, wildlife_settings, {self.cooking_station.position})
         self.resources.wildlife = self.wildlife
@@ -275,6 +278,9 @@ class Simulation:
                                    or status.get("reason", "").startswith("stale decision") else "accepted"),
                     "outcome": agent.current_action, "position_after": agent.position, "food_after": agent.food})
                 del self.decision_trace[:-self.decision_trace_limit]
+            if (self.tick-1) % self.progress.timing.needs_interval_ticks == 0:
+                self.energy_rules.passive(agent, self.progress.timing.needs_interval_ticks*.25,
+                                          busy=self.progress.held(agent))
             assert self.world.walkable(agent.position)
             assert 0 <= agent.hunger <= 100 and 0 <= agent.energy <= 100
             assert 0 <= agent.inventory.used <= agent.inventory.capacity

@@ -243,7 +243,6 @@ class Wildlife:
         if not chicken.alive or actor.inventory.used >= actor.inventory.capacity:
             return False
         self._defeat(actor, chicken)
-        actor.energy = max(0, actor.energy-8)
         return True
 
 

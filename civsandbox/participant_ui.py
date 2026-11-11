@@ -224,6 +224,7 @@ class ParticipantUI:
             lines = ['M: choose Observer Mode or control a villager.',
                      'WASD / arrows: move in Participant Mode.',
                      'E: nearby actions. I: inventory / meals / rest.',
+                     'F6: gather prototype on/off. F7: all-character gather preview.',
                      'Left-click a chicken within one tile: hit (25 HP). Four hits yield raw meat.',
                      'Backspace: cancel unfinished work. Esc: close menus.',
                      'Space: pause. Minus / plus: adjust speed.',

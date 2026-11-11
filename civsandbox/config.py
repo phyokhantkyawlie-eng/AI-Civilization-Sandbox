@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 import math
 from .pacing import ActionTiming
+from .energy import EnergyRules
 from .daynight import DayClock
 from .survival import SurvivalRules
 from .wildlife import WildlifeSettings
@@ -27,8 +28,15 @@ class Settings:
     day_clock: DayClock = field(default_factory=DayClock)
     survival: SurvivalRules = field(default_factory=SurvivalRules)
     action_timing: ActionTiming = field(default_factory=ActionTiming)
+    energy: EnergyRules = field(default_factory=EnergyRules)
+    enable_interact_animation: bool = True
+    interact_animation_seconds: float = 1.0
 
     def __post_init__(self):
+        if type(self.enable_interact_animation) is not bool:
+            raise ValueError('Interaction animation flag must be boolean')
+        if not math.isfinite(self.interact_animation_seconds) or not .4 <= self.interact_animation_seconds <= 4:
+            raise ValueError('Interaction animation duration must be 0.4–4 seconds')
         if type(self.memory_enabled) is not bool:
             raise ValueError("memory_enabled must be boolean")
         if self.provider not in ("mock", "rule-based", "gemini"):
@@ -93,7 +101,14 @@ class Settings:
             avoid_ticks=seconds_to_ticks('SOCIAL_AVOID_SECONDS',20),
             minimum_line_seconds=float(values.get('DIALOGUE_MIN_SECONDS',3)),
             characters_per_second=float(values.get('DIALOGUE_CHARACTERS_PER_SECOND',18)))
-        return cls(social=social, wildlife=wildlife, day_clock=clock, survival=survival, action_timing=ActionTiming(**timings), memory_enabled=memory_flag == "true",
+        interact_flag = str(values.get('ENABLE_INTERACT_ANIMATION','true')).strip().lower()
+        if interact_flag not in ('true','false'):
+            raise ValueError('ENABLE_INTERACT_ANIMATION must be true or false')
+        energy = EnergyRules(**{name: (int if name=="rest_gain" else float)(values.get("ENERGY_"+name.upper(),default))
+                                for name,default in EnergyRules().__dict__.items()})
+        return cls(enable_interact_animation=interact_flag=='true',
+                   interact_animation_seconds=float(values.get('INTERACT_ANIMATION_SECONDS',1)),
+                   energy=energy, social=social, wildlife=wildlife, day_clock=clock, survival=survival, action_timing=ActionTiming(**timings), memory_enabled=memory_flag == "true",
                    memory_path=values.get("MEMORY_PATH") or "data/social_memory.json",
                    provider=selected, max_calls=0,
                    cooldown_ticks=int(values.get("AI_DECISION_COOLDOWN_TICKS", "40")))

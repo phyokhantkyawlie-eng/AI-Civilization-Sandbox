@@ -47,7 +47,20 @@ Default logical window: 1100×750. Use --window-scale 0.85 or 1.25 for compact/l
 
 Chickens now have articulated, entirely programmatic idle/walk/peck animations, blinking, hit flashes and a brief defeat animation. No new artwork, services or dependencies are required. In Participant Mode, left-click the visible chicken: each valid click deals 25 of 100 HP, four hits grant one raw chicken. Range uses the player’s actual tile (same/cardinal neighbor); diagonal or distant clicks do not move the player. UI/speech clicks and held mouse movement never attack. E retains gathering, cooking and social options; it no longer offers player hunting. Autonomous NPCs retain timed pursuit/catch behavior.
 
-Hunger still means 0 satisfied / 100 starving. It now rises one-third as often (default +1 every 3 simulated seconds), while energy, meals and survival thresholds keep their existing values. Set `HUNGER_INTERVAL_MULTIPLIER` in optional .env (default 3, old rate 1). This multiplies `NEEDS_INTERVAL_SECONDS`; rendering FPS never controls needs. Historical Stage 7 measurements used the earlier balance and must not be presented as fresh results from this revision. Details/tests: [CHICKEN_POLISH.md](CHICKEN_POLISH.md).
+Hunger still means 0 satisfied / 100 starving. It now rises one-third as often (default +1 every 3 simulated seconds), while meals and survival thresholds keep their existing values. Energy now uses the reduced, centralized rates described below. Set `HUNGER_INTERVAL_MULTIPLIER` in optional .env (default 3, old rate 1). This multiplies `NEEDS_INTERVAL_SECONDS`; rendering FPS never controls needs. Historical Stage 7 measurements used the earlier balance and must not be presented as fresh results from this revision. Details/tests: [CHICKEN_POLISH.md](CHICKEN_POLISH.md).
+
+## Energy balance and optional gather prototype
+
+Energy now drains at 0.02 units per idle simulated second and 0.1 per walking tile, with inclusive configurable costs for gathering (1), cooking (0.5), pursuit steps (0.5), catches (4) and player hits (0.5). Rest remains +8 per completed one-second rest. Physical actions/rest do not also pay passive drain. Hunger retains the prior 3× slower balance.
+
+The experimental `interact_gather` presentation uses the unchanged original directional idle art plus small resource-contact/pickup effects. It has **16 procedural direction/phase states per character**, not newly illustrated reaching arms. Only accepted, stationary, in-range berry gathering plays it; the executor still controls all timing and rewards. No original PNG is changed.
+
+```bash
+python -m civsandbox --interact-preview
+python -m civsandbox --no-interact-animation
+```
+
+F7 opens/closes the frozen-world preview; 1–4 selects Mira/Nyra/Kairo/Ren; Space pauses the preview. **F6 disables/enables the prototype immediately**, with original idle fallback. Persistent preference: `ENABLE_INTERACT_ANIMATION=false` in optional .env. Cycle setting: `INTERACT_ANIMATION_SECONDS=1.0`, fitted to whole cycles per gathering action. Full energy units, actual five-day comparisons, limitations and safe removal instructions: [ENERGY_INTERACT.md](ENERGY_INTERACT.md).
 
 ## Save and load
 

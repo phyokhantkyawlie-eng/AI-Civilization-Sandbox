@@ -17,6 +17,7 @@ from .pacing import ActionTiming
 from .resources import Resources, ResourceChange
 from .social import Memory
 from .survival import SurvivalRules
+from .energy import EnergyRules
 from .wildlife import Chicken, ChickenState, WildlifeSettings
 from .world import World, Tile
 
@@ -64,12 +65,12 @@ def checkpoint(sim, selected_id=None):
             'seed':sim.seed,'scenario':sim.scenario,'tick':sim.tick,
             'provider':provider,'memory_enabled':social.memory_enabled,
             'configuration':{'timing':asdict(sim.progress.timing),'clock':asdict(sim.clock),
-                             'survival':asdict(sim.survival),'wildlife':asdict(sim.wildlife.settings),
+                             'energy':asdict(sim.energy_rules),'survival':asdict(sim.survival),'wildlife':asdict(sim.wildlife.settings),
                              'social':asdict(social.settings)},
             'world':[[tile.value for tile in row] for row in sim.world.tiles],
             'station':{'id':sim.cooking_station.id,'position':sim.cooking_station.position},
             'agents':[{key:asdict(actor)[key] for key in (
-                'id','name','position','hunger','energy','inventory','personality','personality_name',
+                'id','name','position','hunger','energy','energy_spent_micro','inventory','personality','personality_name',
                 'facing','incapacitated_until','recovery_grace_until','trust','memories')} for actor in sim.agents],
             'resources':[asdict(bush) for bush in sim.resources.bushes.values()],
             'resource_changes':[asdict(change) for change in sim.resources.changes[-512:]],
@@ -104,6 +105,7 @@ def restore(payload):
     if payload['provider'] not in ('rule-based','mock') or type(payload['memory_enabled']) is not bool:
         raise ValueError('Invalid offline provider')
     settings = dict(timing=ActionTiming(**config['timing']),day_clock=DayClock(**config['clock']),
+                    energy_rules=EnergyRules(**config.get('energy',{})),
                     survival=SurvivalRules(**config['survival']),wildlife_settings=WildlifeSettings(**config['wildlife']),
                     social_settings=SocialSettings(**config['social']))
     for section in config.values():
@@ -152,6 +154,7 @@ def restore(payload):
         capacity = sim.resources.bushes[point].capacity
         sim.resources.changes.append(ResourceChange(integer(entry['tick'],0,tick),point,
             integer(entry['before'],0,capacity),integer(entry['after'],0,capacity),entry['reason'],entry['agent_id']))
+    sim.resources.energy_rules = sim.energy_rules
     sim.resources.cooking_station = sim.cooking_station
     roster = payload['agents']
     if len(roster)!=4 or {a['id'] for a in roster}!=set(CHARACTERS):
@@ -164,6 +167,9 @@ def restore(payload):
         actor.position = position(record['position'],world)
         actor.hunger = integer(record['hunger'],0,100)
         actor.energy = integer(record['energy'],0,100)
+        actor.energy_spent_micro = integer(record.get('energy_spent_micro',0),0,999999)
+        if actor.energy == 0 and actor.energy_spent_micro:
+            raise ValueError('Exhausted energy cannot carry negative fractional balance')
         inv = record['inventory']
         actor.inventory = Inventory(integer(inv['capacity'],0,100),inv['items'])
         actor.incapacitated_until = integer(record['incapacitated_until'])

@@ -15,6 +15,8 @@ def main():
     parser.add_argument("--scenario", choices=("default", "food_shortage"), default="default")
     parser.add_argument("--provider", choices=["mock", "rule-based"])
     parser.add_argument("--animation-fps", type=float, default=8.0)
+    parser.add_argument('--interact-preview', action='store_true', help='Preview the optional gather prototype (F7)')
+    parser.add_argument('--no-interact-animation', action='store_true', help='Use existing idle sprites for gathering')
     parser.add_argument("--idle-fps", type=float, default=4.0)
     parser.add_argument("--window-scale", type=float, choices=(.85,1.0,1.25), default=1.0)
     parser.add_argument('--mode', choices=('observer', 'participant'), default=None)
@@ -23,6 +25,8 @@ def main():
     parser.add_argument('--save-file', metavar='FILE', help='In-game F5/F9 checkpoint path')
     parser.add_argument('--save', metavar='FILE', help='Save a checkpoint after a headless run')
     args = parser.parse_args()
+    if args.interact_preview and args.headless:
+        parser.error('--interact-preview requires graphics')
     if args.save and not args.headless:
         parser.error('--save requires --headless; use --save-file for an interactive save slot')
     if args.headless and args.mode == 'participant':
@@ -54,7 +58,7 @@ def main():
         if not args.headless:
             simulation.paused = True
     else:
-        simulation = Simulation(args.seed, create_provider(settings), settings.memory_enabled, memory_path, scenario=args.scenario, timing=settings.action_timing, day_clock=settings.day_clock, survival=settings.survival, wildlife_settings=settings.wildlife, social_settings=settings.social)
+        simulation = Simulation(args.seed, create_provider(settings), settings.memory_enabled, None if args.interact_preview else memory_path, scenario=args.scenario, timing=settings.action_timing, day_clock=settings.day_clock, survival=settings.survival, wildlife_settings=settings.wildlife, social_settings=settings.social, energy_rules=settings.energy)
     simulation.save_path = Path(args.save_file or args.load or Path(__file__).resolve().parent.parent/'data'/'world_save.json')
     if args.mode == 'observer' or args.headless and simulation.player:
         simulation.set_participant()
@@ -74,7 +78,10 @@ def main():
             print(json.dumps(simulation.snapshot(), sort_keys=True))
         else:
             from .rendering import run
-            run(simulation, args.animation_fps,args.window_scale,args.idle_fps)
+            run(simulation, args.animation_fps,args.window_scale,args.idle_fps,
+                enable_interact_animation=settings.enable_interact_animation and not args.no_interact_animation,
+                interact_animation_seconds=settings.interact_animation_seconds,
+                interact_preview=args.interact_preview)
     finally:
         simulation.close()
 

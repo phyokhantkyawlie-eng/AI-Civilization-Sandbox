@@ -133,6 +133,10 @@ class ActionProgress:
             actor.current_action = "HUNT"
             self.started = True
             return True
+        if action.kind in (ActionType.GATHER,ActionType.COOK):
+            target = action.target if action.kind == ActionType.GATHER else resources.cooking_station.position
+            dx,dy = target[0]-actor.position[0],target[1]-actor.position[1]
+            actor.facing = ("right" if dx > 0 else "left") if dx else ("down" if dy > 0 else "up")
         duration = self.duration_for(action, actor)
         session = None
         if action.kind in SOCIAL_ACTIONS:

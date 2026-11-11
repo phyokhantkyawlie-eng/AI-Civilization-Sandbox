@@ -17,9 +17,10 @@ class ActionTiming:
     social_cooldown_ticks: int = 40
     rest_ticks: int = 4
     cook_ticks: int = 20
+    hunger_interval_multiplier: int = 3
 
     def __post_init__(self):
-        if self.needs_interval_ticks < 1:
+        if self.needs_interval_ticks < 1 or self.hunger_interval_multiplier < 1:
             raise ValueError("Needs interval must be positive")
         if any(type(value) is not int or value < 0 for value in self.__dict__.values()):
             raise ValueError("Action timing values must be nonnegative integers")
@@ -32,7 +33,7 @@ class ActionTiming:
 
     @classmethod
     def instant(cls):
-        return cls(1, 0, 0, 0, 0, 0, 0, 0, 0)
+        return cls(1, 0, 0, 0, 0, 0, 0, 0, 0, 1)
 
 
 @dataclass

@@ -57,6 +57,8 @@ class Chicken:
     moving: bool = False
     facing: int = 1
     claimed_by: str | None = None
+    hp: int = 100
+    max_hp: int = 100
 
 
 @dataclass
@@ -200,17 +202,48 @@ class Wildlife:
         self.events.append({"tick": self.tick, "action": "HUNT_FAILED", "actor_id": actor_id,
                             "target": pursuit.chicken_id, "result": reason})
 
+    def can_attack(self, actor, target):
+        chicken = self.chickens.get(target) if isinstance(target, str) else None
+        return bool(chicken and chicken.alive and chicken.hp > 0
+                    and not actor.incapacitated_until and actor.energy > 0
+                    and chicken.claimed_by in (None, actor.id)
+                    and distance(actor.position, chicken.position) <= 1
+                    and actor.inventory.used < actor.inventory.capacity)
+
+    def attack(self, actor, target):
+        """One validated discrete hit. The final hit atomically rewards once."""
+        if not self.can_attack(actor, target):
+            return False
+        chicken = self.chickens[target]
+        chicken.hp -= chicken.max_hp//4
+        chicken.state, chicken.activity = ChickenState.FLEE, "fleeing"
+        chicken.fear_until = self.tick+12
+        chicken.calm_until = 0
+        chicken.next_move_tick = self.tick+1
+        self.events.append({"tick": self.tick, "action": "CHICKEN_HIT",
+                            "actor_id": actor.id, "target": target, "hp": chicken.hp,
+                            "executed": True, "result": "hit"})
+        if chicken.hp == 0:
+            self._defeat(actor, chicken)
+        return True
+
+    def _defeat(self, actor, chicken):
+        # Capacity is validated before damage/hunt; no concurrent mutation here.
+        if not chicken.alive or not actor.inventory.add("raw_chicken"):
+            raise ValueError("Defeat requires a living target and inventory capacity")
+        chicken.hp, chicken.alive, chicken.claimed_by = 0, False, None
+        chicken.activity, chicken.moving = "defeated", False
+        self.pursuits.pop(actor.id, None)
+        self.cooldowns[actor.id] = self.tick+self.settings.cooldown_ticks
+        self.respawns.append(self.tick+self.settings.respawn_ticks)
+
     def complete(self, actor, target):
         # Called only by the common executor after final validation.
         chicken = self.chickens[target]
-        if not actor.inventory.add("raw_chicken"):
+        if not chicken.alive or actor.inventory.used >= actor.inventory.capacity:
             return False
-        chicken.alive, chicken.claimed_by = False, None
-        chicken.activity, chicken.moving = "defeated", False
-        del self.pursuits[actor.id]
+        self._defeat(actor, chicken)
         actor.energy = max(0, actor.energy-8)
-        self.cooldowns[actor.id] = self.tick+self.settings.cooldown_ticks
-        self.respawns.append(self.tick+self.settings.respawn_ticks)
         return True
 
 

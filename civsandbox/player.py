@@ -32,6 +32,9 @@ class PlayerController:
 
     def submit(self, action, sim):
         actor = sim.social.agents[self.agent_id]
+        if isinstance(action, Action) and action.kind == ActionType.HUNT:
+            self.message = 'Left-click a nearby chicken to attack.'
+            return False
         if self.pending:
             self.message = 'Answer the current invitation first.'
             return False
@@ -163,9 +166,6 @@ def nearby_options(sim):
     for position, bush in sim.resources.bushes.items():
         if actor.position in sim.world.neighbors(position):
             options.append((f'Bush: gather ({bush.quantity}/{bush.capacity})', Action(ActionType.GATHER, position), ('bush', position)))
-    for chicken in sim.wildlife.living():
-        if sum(abs(a-b) for a, b in zip(actor.position, chicken.position)) <= 1:
-            options.append(('Chicken: hunt', Action(ActionType.HUNT, chicken.id), ('chicken', chicken.id)))
     station = sim.cooking_station
     if actor.position in sim.world.neighbors(station.position):
         options.append(('Campfire: cook raw chicken', Action(ActionType.COOK, station.id), ('station', station.id)))

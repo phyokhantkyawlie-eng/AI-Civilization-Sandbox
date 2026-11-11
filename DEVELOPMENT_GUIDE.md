@@ -158,3 +158,12 @@ GOAL_SELECTED auditing records actual new goals; existing PLAN outcome events st
 Cleanup is narrow: verified unused rendering/test imports and obsolete runner metadata/waits were removed. phase1a and tested optional external-adapter serialization code remain preserved. Root requirements are used by game/tests/assets/evaluation and contain no Google SDK requirement. Legacy compatibility parameters remain where callers depend on them, explicitly labeled.
 
 Recovery tag: codex/stage7-baseline at d88109d. Preserve private data/.env, original art and prototype files byte for byte during release application. Generated artifacts/stage7 evidence stays ignored. Current guides are README, ARCHITECTURE, GAMEPLAY_GUIDE, AI_EVALUATION, EXPERIMENT, RESULTS_GUIDE, DEMO_GUIDE and FINAL_VERIFICATION; older STAGE* reports are historical.
+
+
+## Procedural wildlife / discrete input conventions
+
+`chicken_animation.py` reuses CharacterView interpolation with a small motion adapter. Articulated analytic curves and staggered blink/peck phases never consume simulation RNG or change wildlife state. Renderer views observe HP and alive transitions for hit/death feedback; dead visual retention is short, and logical corpse retention stays bounded. Reset views on load. Clicks use visible silhouette regions in logical screen coordinates, after window scaling and before logical tile validation; no camera exists beyond ORIGIN.
+
+Participant clicks call Simulation.player_attack, then the same Action validator/executor (`ATTACK`) used for authoritative mutations. Wildlife owns HP, shared defeat/reward/respawn logic and claims. E/context HUNT is disabled only for the human controller; NPC HUNT remains the timed planner/pursuit path. Never update inventory or damage in drawing code. Saves retain partial HP; legacy version-1 records without HP load as full living/zero dead, and malformed health is rejected.
+
+ActionTiming.hunger_interval_multiplier defaults to 3 and is exported/persisted. The needs cadence continues to drain energy normally; only hunger updates every third needs update. `ActionTiming.instant()` explicitly retains multiplier 1 for legacy instant-action unit fixtures. Do not reinterpret old experiment artifacts as measurements from the rebalanced default.

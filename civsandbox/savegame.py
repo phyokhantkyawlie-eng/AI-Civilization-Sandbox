@@ -220,7 +220,12 @@ def restore(payload):
         wildlife.chickens[key] = Chicken(key,point,state,record['activity'],record['alive'],
             integer(record['threat_radius'],1,24),integer(record['movement_ticks'],1),
             integer(record['next_move_tick']),integer(record['fear_until']),integer(record['calm_until']),
-            False,integer(record['facing'],-1,1),None)
+            False,integer(record['facing'],-1,1),None,
+            integer(record.get('hp',100 if record['alive'] else 0),0,100),
+            integer(record.get('max_hp',100),100,100))
+        chicken = wildlife.chickens[key]
+        if chicken.alive != (chicken.hp > 0) or chicken.hp % 25:
+            raise ValueError('Invalid chicken health')
     if len(live_positions)>wildlife.settings.maximum_population:
         raise ValueError('Population limit exceeded')
     wildlife.tick = tick

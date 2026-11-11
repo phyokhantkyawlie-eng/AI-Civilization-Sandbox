@@ -4,6 +4,7 @@ import pygame
 from .simulation import FixedTicker, Simulation
 from .world import Tile
 from .animation import SpriteAnimator, CharacterView
+from .chicken_animation import ChickenView
 from .feedback import Feedback
 from .participant_ui import ParticipantUI
 from .characters import CHARACTERS
@@ -63,6 +64,7 @@ class Renderer:
         self.characters = {}
         self.character_rects = {}
         self.chicken_rects = {}
+        self.chicken_views = {}
         self.feedback = Feedback()
         self.participant_ui = ParticipantUI()
         self.ground_cache = {}
@@ -129,9 +131,13 @@ class Renderer:
         station=simulation.cooking_station
         layers.append((ORIGIN[1]+station.position[1]*TILE_SIZE+30,3,station))
         self.chicken_rects.clear()
-        for chicken in simulation.wildlife.living():
-            foot = (ORIGIN[0]+chicken.position[0]*TILE_SIZE+18,
-                    ORIGIN[1]+chicken.position[1]*TILE_SIZE+31)
+        self.sync_chickens(simulation)
+        for chicken in simulation.wildlife.chickens.values():
+            view = self.chicken_views[chicken.id]
+            if not view.visible:
+                continue
+            foot = (round(ORIGIN[0]+view.position[0]*TILE_SIZE+18),
+                    round(ORIGIN[1]+view.position[1]*TILE_SIZE+31))
             layers.append((foot[1], 2, (chicken, foot)))
         # Ground first, then terrain/characters sorted by feet so foreground objects occlude correctly.
         self.character_rects.clear()
@@ -274,7 +280,21 @@ class Renderer:
                 # draw() used without tick callbacks (e.g. a restored snapshot): snap, never cut corners.
                 self.characters[agent.id].snap(agent.position)
 
+    def sync_chickens(self, simulation, seconds=None):
+        for key in set(self.chicken_views)-simulation.wildlife.chickens.keys():
+            del self.chicken_views[key]
+        for chicken in simulation.wildlife.chickens.values():
+            if chicken.id not in self.chicken_views:
+                self.chicken_views[chicken.id] = ChickenView(chicken)
+            view = self.chicken_views[chicken.id]
+            view.observe(chicken)
+            if seconds is not None:
+                view.capture(chicken.position, seconds)
+            elif view.logical_position != chicken.position:
+                view.snap(chicken.position)
+
     def capture_tick(self, simulation, seconds):
+        self.sync_chickens(simulation, seconds)
         for agent in simulation.agents:
             if agent.id not in self.characters:
                 self.characters[agent.id] = CharacterView(
@@ -299,7 +319,7 @@ class Renderer:
                         animator.update(real_dt, moving, direction)
             self.feedback.advance(elapsed)
             self.feedback.advance_reading(elapsed/timing.get("speed",1))
-        for view in self.characters.values():
+        for view in (*self.characters.values(), *self.chicken_views.values()):
             view.advance(elapsed, paused, **timing)
 
     @staticmethod
@@ -387,6 +407,7 @@ class Renderer:
         self.characters.clear()
         self.character_rects.clear()
         self.chicken_rects.clear()
+        self.chicken_views.clear()
         self.feedback = Feedback()
         self.selected_id = simulation.selected_id
         self.selected_bush = None
@@ -625,28 +646,10 @@ class Renderer:
             if y>648:break
 
     def draw_chicken(self, chicken, foot, tick):
-        x, y = foot
-        pecking = chicken.activity == "pecking"
-        bob = (tick//2) % 2 if chicken.moving else 0
-        head_x = x+chicken.facing*8
-        head_y = y-8 if pecking else y-17-bob
-        pygame.draw.ellipse(self.screen, (54, 72, 49), (x-10, y-3, 20, 6))
-        pygame.draw.line(self.screen, (221, 159, 62), (x-3,y-4), (x-4,y+1-bob), 2)
-        pygame.draw.line(self.screen, (221, 159, 62), (x+3,y-4), (x+5,y+1+bob), 2)
-        pygame.draw.ellipse(self.screen,(103,86,57),(x-11,y-19-bob,22,17))
-        pygame.draw.ellipse(self.screen, (240, 230, 198), (x-10,y-18-bob,20,15))
-        pygame.draw.ellipse(self.screen, (205, 193, 159), (x-6,y-14-bob,10,8), 1)
-        pygame.draw.circle(self.screen, (246, 238, 205), (head_x,head_y), 6)
-        pygame.draw.circle(self.screen, (185, 64, 53), (head_x-2,head_y-6), 3)
-        pygame.draw.circle(self.screen, (38, 43, 41), (head_x+chicken.facing*2,head_y-1), 1)
-        pygame.draw.polygon(self.screen, (226, 166, 53), [(head_x+chicken.facing*5,head_y),
-                            (head_x+chicken.facing*10,head_y+2), (head_x+chicken.facing*5,head_y+3)])
-        if chicken.state == "FLEE":
-            self.screen.blit(self.small.render("!", True, (251, 206, 115)), (x-3,y-35))
-            pygame.draw.line(self.screen, (208, 199, 161), (x-chicken.facing*16,y-10), (x-chicken.facing*12,y-10))
-        elif pecking:
-            pygame.draw.circle(self.screen, (199, 167, 99), (head_x+chicken.facing*8,y), 1)
-        self.chicken_rects[chicken.id] = pygame.Rect(x-15,y-28,30,32)
+        view = self.chicken_views[chicken.id]
+        rect = view.draw(self.screen, chicken, foot)
+        if chicken.alive:
+            self.chicken_rects[chicken.id] = rect
 
     def draw_feature(self, tile, rect, simulation, position):
         cx, cy = rect.center
@@ -772,6 +775,32 @@ def handle_event(event, simulation, ticker, renderer=None) -> bool:
             key = {'pause':pygame.K_SPACE,'slower':pygame.K_MINUS,'faster':pygame.K_EQUALS,
                    'save':pygame.K_F5,'load':pygame.K_F9,'help':pygame.K_F1}[clicked]
             return handle_event(pygame.event.Event(pygame.KEYDOWN, key=key), simulation, ticker, renderer)
+        if (renderer.animation_preview or renderer.history_open or renderer.world_history_open):
+            return True
+        overlay_rects = list(getattr(renderer, 'feedback_rects', ()))
+        if simulation.player:
+            overlay_rects.append(pygame.Rect(24,680,852,47))
+        if renderer.feedback.current_dialogue and not renderer.debug:
+            overlay_rects.append(pygame.Rect(24,598,500,80))
+        if any(rect.collidepoint(event.pos) for rect in overlay_rects):
+            return True
+        if simulation.player and renderer.map_rect.collidepoint(event.pos):
+            # Rects are from the actual interpolated artwork in draw order. No camera
+            # exists: display scaling is inverted above; ORIGIN is already in rects.
+            target = next((key for key, rect in reversed(list(renderer.chicken_rects.items()))
+                           if rect.collidepoint(event.pos)
+                           and renderer.chicken_views[key].hit_test(event.pos)), None)
+            chicken_y = ORIGIN[1]+renderer.chicken_views[target].position[1]*TILE_SIZE+31 if target else 0
+            obscured = any(rect.collidepoint(event.pos)
+                           and renderer.draw_feet[key][1] > chicken_y
+                           and renderer.characters[key].animator.frame.get_at(
+                               (event.pos[0]-rect.x,event.pos[1]-rect.y)).a > 0
+                           for key,rect in renderer.character_rects.items()) if target else False
+            if target and not obscured:
+                simulation.player_attack(target)
+                renderer.notify(simulation.player.message)
+                renderer.sync_chickens(simulation)
+                return True
         renderer.select_at(event.pos, simulation)
     if event.type == pygame.MOUSEWHEEL and renderer and renderer.world_history_open:
         renderer.news_page = max(0,renderer.news_page-event.y)

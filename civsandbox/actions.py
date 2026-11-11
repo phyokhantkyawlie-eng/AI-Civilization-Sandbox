@@ -12,6 +12,7 @@ class ActionType(str, Enum):
     MOVE_TO = "MOVE_TO"
     GATHER = "GATHER"
     HUNT = "HUNT"
+    ATTACK = "ATTACK"
     COOK = "COOK"
     EAT = "EAT"
     REST = "REST"
@@ -67,6 +68,9 @@ def validate(action: Action, agent: Agent, world: World, resources: Resources, s
         return (agent.energy > 0 and agent.inventory.used < agent.inventory.capacity
                 and resources.available(action.target) > 0
                 and agent.position in world.neighbors(action.target))
+    if action.kind == ActionType.ATTACK:
+        wildlife = getattr(resources, "wildlife", None)
+        return wildlife is not None and wildlife.can_attack(agent, action.target)
     if action.kind == ActionType.HUNT:
         wildlife = getattr(resources, "wildlife", None)
         return wildlife is not None and wildlife.can_hunt(agent, action.target, world, final=final)
@@ -87,7 +91,10 @@ def execute(action: Action, agent: Agent, world: World, resources: Resources, ti
     """Invalid actions are atomic no-ops. MOVE_TO advances one BFS step."""
     if not validate(action, agent, world, resources, social, final=True):
         return False
-    if action.kind == ActionType.HUNT:
+    if action.kind == ActionType.ATTACK:
+        if not resources.wildlife.attack(agent, action.target):
+            return False
+    elif action.kind == ActionType.HUNT:
         if not resources.wildlife.complete(agent, action.target):
             return False
     elif action.kind == ActionType.COOK:

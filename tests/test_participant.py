@@ -108,8 +108,9 @@ def test_hunt_cook_meal_conserves_food_and_no_duplicate_meat():
     from test_wildlife import hunt_fixture
     sim, actor, chicken, hunt = hunt_fixture()
     sim.set_participant(actor.id)
-    assert sim.player.submit(hunt,sim)
-    complete(sim)
+    assert not sim.player.submit(hunt,sim)  # E/context hunting is replaced by discrete clicks.
+    for _ in range(4):
+        assert sim.player_attack(chicken.id)
     assert not chicken.alive and actor.inventory.quantity('raw_chicken')==1
     assert not sim.player.submit(hunt,sim)
     assert not sim.player.submit(Action(ActionType.EAT,item='raw_chicken'),sim)

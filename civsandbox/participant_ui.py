@@ -177,8 +177,7 @@ class ParticipantUI:
         if player:
             actor = sim.social.agents[player.agent_id]
             renderer.screen.blit(renderer.small.render('Participant: '+actor.name+' | M: modes', True, (232,215,164)), (620,24))
-            options = nearby_options(sim)
-            hint = 'E: '+(options[0][0] if options else 'actions / rest')+' | I: inventory | Backspace: cancel'
+            hint = 'E: actions | Click nearby chicken: hit | I: inventory | Backspace: cancel'
             for y, text in ((682, hint), (705, player.message)):
                 while renderer.small.size(text)[0] > 840:
                     text = text[:-2]+'…'
@@ -224,7 +223,8 @@ class ParticipantUI:
             renderer.text('Controls and help',(255,170),title=True)
             lines = ['M: choose Observer Mode or control a villager.',
                      'WASD / arrows: move in Participant Mode.',
-                     'E: nearby actions and inspection. I: inventory / meals / rest.',
+                     'E: nearby actions. I: inventory / meals / rest.',
+                     'Left-click a chicken within one tile: hit (25 HP). Four hits yield raw meat.',
                      'Backspace: cancel unfinished work. Esc: close menus.',
                      'Space: pause. Minus / plus: adjust speed.',
                      'C: conversations. N: village event history.',

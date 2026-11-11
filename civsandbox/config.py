@@ -55,6 +55,7 @@ class Settings:
             if not math.isfinite(seconds) or seconds <= 0:
                 raise ValueError("Action durations must be finite and positive")
             timings[name+"_ticks"] = math.ceil(seconds/.25)
+        timings["hunger_interval_multiplier"] = int(values.get("HUNGER_INTERVAL_MULTIPLIER", 3))
         def seconds_to_ticks(name, default):
             seconds = float(values.get(name, default))
             if not math.isfinite(seconds) or seconds <= 0:

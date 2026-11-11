@@ -108,6 +108,38 @@ class Simulation:
     def time_of_day(self):
         return self.clock.at(self.tick)
 
+    def player_attack(self, target):
+        """Discrete input command: no auto-travel, timers or held-button damage."""
+        if not self.player:
+            return False
+        actor = self.social.agents[self.player.agent_id]
+        chicken = self.wildlife.chickens.get(target)
+        if self.paused or self.input_blocked:
+            self.player.message = 'Resume the simulation to attack.'
+            return False
+        if self.progress.held(actor) or self.player.pending:
+            self.player.message = 'Finish or cancel the current activity first.'
+            return False
+        if chicken and sum(abs(a-b) for a,b in zip(actor.position,chicken.position)) > 1:
+            self.player.message = 'Too far away'
+            return False
+        action = Action(ActionType.ATTACK, target, 'Player clicked a nearby chicken')
+        if not execute(action, actor, self.world, self.resources, self.tick, self.social):
+            self.player.message = 'Cannot attack: target unavailable, inventory full or no energy.'
+            return False
+        self.player.clear()
+        self.player.message = f'Hit! {chicken.hp}/{chicken.max_hp} HP' if chicken.alive else 'Collected raw chicken.'
+        self.events.extend(self.wildlife.events)
+        self.wildlife.events.clear()
+        self.events.append({"tick":self.tick,"actor_id":actor.id,"agent":actor.name,
+                            "action":"ATTACK" if chicken.alive else "HUNT",
+                            "target":target,"executed":True,"decision_source":"player",
+                            "result":"hit" if chicken.alive else "collected raw chicken"})
+        self.number_events()
+        if self.event_limit is not None:
+            del self.events[:-self.event_limit]
+        return True
+
     def step(self) -> None:
         if self.paused or self.input_blocked:
             return
@@ -120,7 +152,9 @@ class Simulation:
         hunger_before_tick = {agent.id: agent.hunger for agent in self.agents}
         for agent in self.agents:
             if (self.tick-1) % self.progress.timing.needs_interval_ticks == 0:
-                agent.advance_needs()
+                hunger_due = (self.tick-1) % (self.progress.timing.needs_interval_ticks *
+                                              self.progress.timing.hunger_interval_multiplier) == 0
+                agent.advance_needs(hunger=hunger_due)
             transition = self.survival.update(agent, self.tick)
             if transition:
                 self.progress.cancel_for(agent.id)

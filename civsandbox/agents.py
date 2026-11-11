@@ -62,8 +62,9 @@ class Agent:
     def food(self, value):
         self.inventory.set_quantity("berries", value)
 
-    def advance_needs(self) -> None:
-        self.hunger = min(100, self.hunger + 1)
+    def advance_needs(self, *, hunger=True) -> None:
+        if hunger:
+            self.hunger = min(100, self.hunger + 1)
         self.energy = max(0, self.energy - 1)
 
 

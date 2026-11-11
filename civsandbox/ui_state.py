@@ -43,7 +43,7 @@ def activity(agent, simulation):
         return "Talking to "+names[other]
     if simulation.progress.waiting_for_response(agent):
         return "Waiting for response"
-    labels = {"COOK": "Cooking chicken", "HUNT": "Pursuing chicken", "GATHER": "Gathering berries", "EAT": "Eating", "REST": "Resting",
+    labels = {"ATTACK": "Attacking chicken", "COOK": "Cooking chicken", "HUNT": "Pursuing chicken", "GATHER": "Gathering berries", "EAT": "Eating", "REST": "Resting",
               "WAIT": "Looking for food", "TALK": "Greeting",
               "REQUEST_FOOD": "Asking for food", "SHARE_FOOD": "Sharing berries",
               "REFUSE_REQUEST": "Declining a request"}

@@ -34,6 +34,7 @@ Observer Mode runs all four autonomously. Participant Mode controls one existing
 | --- | --- |
 | WASD / arrows | Participant movement; arrows adjust speed in Observer Mode |
 | E / I | Nearby actions/inspection; inventory/eating/rest |
+| Left-click chicken | Participant attack within one Manhattan tile; 25 HP per click |
 | M / Backspace | Character/mode menu; cancel unfinished work |
 | Space / − / + | Pause/resume; simulation speed |
 | C / N | Timestamped conversations; village news |
@@ -41,6 +42,12 @@ Observer Mode runs all four autonomously. Participant Mode controls one existing
 | F5 / F9 | Save full world; confirm load |
 
 Default logical window: 1100×750. Use --window-scale 0.85 or 1.25 for compact/large presentation with remapped mouse targets. Detailed values, seed/ticks, scores and traces remain in F3 (P: planner; S: social).
+
+## Procedural chickens and comfortable survival
+
+Chickens now have articulated, entirely programmatic idle/walk/peck animations, blinking, hit flashes and a brief defeat animation. No new artwork, services or dependencies are required. In Participant Mode, left-click the visible chicken: each valid click deals 25 of 100 HP, four hits grant one raw chicken. Range uses the player’s actual tile (same/cardinal neighbor); diagonal or distant clicks do not move the player. UI/speech clicks and held mouse movement never attack. E retains gathering, cooking and social options; it no longer offers player hunting. Autonomous NPCs retain timed pursuit/catch behavior.
+
+Hunger still means 0 satisfied / 100 starving. It now rises one-third as often (default +1 every 3 simulated seconds), while energy, meals and survival thresholds keep their existing values. Set `HUNGER_INTERVAL_MULTIPLIER` in optional .env (default 3, old rate 1). This multiplies `NEEDS_INTERVAL_SECONDS`; rendering FPS never controls needs. Historical Stage 7 measurements used the earlier balance and must not be presented as fresh results from this revision. Details/tests: [CHICKEN_POLISH.md](CHICKEN_POLISH.md).
 
 ## Save and load
 

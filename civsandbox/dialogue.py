@@ -47,6 +47,30 @@ class DialogueTurn:
     purpose: str = ""
 
 
+class IntentKind(str, Enum):
+    REQUEST_FOOD = 'REQUEST_FOOD'
+    OFFER_FOOD = 'OFFER_FOOD'
+    CASUAL_TALK = 'CASUAL_TALK'
+    CHECK_ON_PLAYER = 'CHECK_ON_PLAYER'
+    THANK_PLAYER = 'THANK_PLAYER'
+
+
+@dataclass(frozen=True)
+class ConversationIntent:
+    kind: IntentKind
+    item: str | None = None
+    quantity: int = 0
+    context: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        food = self.kind in (IntentKind.REQUEST_FOOD, IntentKind.OFFER_FOOD)
+        if not isinstance(self.kind,IntentKind) or type(self.quantity) is not int:
+            raise ValueError('Invalid conversation intent')
+        if (food and (self.item!='berries' or self.quantity!=1)
+                or not food and (self.item is not None or self.quantity!=0)):
+            raise ValueError('Only existing one-berry social transfers are supported')
+
+
 @dataclass
 class InteractionSession:
     id: str
@@ -64,6 +88,9 @@ class InteractionSession:
     finish_tick: int | None = None
     target_position: tuple[int,int] | None = None
     greeting_recorded: bool = False
+    intent: ConversationIntent | None = None
+    intent_presented: bool = False
+    intent_resolution: str | None = None
 
     @property
     def participants(self):

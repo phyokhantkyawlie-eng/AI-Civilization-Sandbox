@@ -165,3 +165,7 @@ Inspection artifacts:
 SDL dummy video was used for automated rendering and screenshots. Native macOS window, keyboard, and perceived loop smoothness require the interactive checks above. No gameplay features or Participant Mode changes were included in this integration.
 
 Actual integration verification: full suite **386 passed, 1 skipped** (31.56 seconds); the skipped test requires a live API. After final optional-manifest validation and preview filtering adjustments, focused animation/regression tests were rerun: **55 passed** (1.92 seconds). Existing walking and inspection assets: **88 files matched byte-for-byte** against the project originals. Dark/light contact sheets and existing-game screenshots were generated; the dark contact sheet, Ren detail, conversation, and preview screenshots were visually reviewed.
+
+### NPC-led dialogue
+
+NPC invitations now retain their original purpose through travel and portrait opening. Choose **Listen** to hear the NPC's request, offer, greeting, check-in or memory-supported thanks, then respond with relevant choices. Listening never accepts a food transaction. Player-initiated menus remain available as before. See [NPC_DIALOGUE_AGENCY.md](NPC_DIALOGUE_AGENCY.md) for launch instructions and manual verification.

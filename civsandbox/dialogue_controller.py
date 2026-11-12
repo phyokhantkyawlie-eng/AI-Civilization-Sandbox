@@ -7,7 +7,7 @@ sessions. Social deadlines stay at frozen world time. Turn reading is manual.
 from collections import deque
 from dataclasses import dataclass
 from .actions import Action,ActionType,SOCIAL_ACTIONS,validate
-from .dialogue import SessionState
+from .dialogue import SessionState, IntentKind
 
 
 @dataclass(frozen=True)
@@ -35,6 +35,7 @@ class DialogueController:
         self.social_ref=None;self.queue=deque(maxlen=64);self.queued=0;self.current=None
         self.phase='idle';self.owner=None;self.action=None;self.job_ref=None;self.elapsed=0.0
         self.origin=0;self.waiting=False;self.end_after_lines=False;self.incoming=None
+        self.npc_initiated=False;self.acknowledged=False
 
     def actors(self,sim):
         return sim.social.agents.get(self.player_id),sim.social.agents.get(self.peer_id)
@@ -99,13 +100,11 @@ class DialogueController:
         if session is None:session=sim.social.propose(b,a.id,prompt.action.kind.value.lower(),sim.world)
         if session is None:
             self.close(sim,canceled=True);return False
-        self.session_id=session.id
+        if prompt.session_id and session.id!=prompt.session_id:
+            self.close(sim,canceled=True);return False
+        self.session_id=session.id;self.npc_initiated=True
         sim.social.transition(session,SessionState.ENGAGED,'Player opened the addressed invitation')
-        if prompt.request_id:
-            texts=[t.text for t in session.turns if t.delivered and t.purpose=='question']
-            text=texts[-1] if texts else 'Could you spare one berry?'
-        else:
-            text={ActionType.TALK:'May I stop for a conversation?',ActionType.REQUEST_FOOD:'May I ask you for some food?',ActionType.OFFER_FOOD:'May I offer you a berry?'}.get(prompt.action.kind,'May I speak with you?')
+        text=b.name+' would like to speak with you.'
         self.current=Line(b.id,text);self.queued=len(session.turns);self.phase='showing';self.serial+=1
         self.flush(sim);return True
 
@@ -187,7 +186,9 @@ class DialogueController:
         elif action.kind==ActionType.REQUEST_FOOD and actor.id!=self.player_id:
             from .player import PlayerPrompt
             session=self.session(sim)
-            self.incoming=PlayerPrompt(actor.id,action,session.request_id)
+            self.incoming=PlayerPrompt(actor.id,action,session.request_id,session_id=session.id)
+        if self.npc_initiated and self.session(sim).intent_resolution is not None:
+            self.incoming=None;self.end_after_lines=True
         if self.waiting:
             if self.queue:self.show_next(sim)
             elif self.owner is None:self.phase='choosing'
@@ -204,13 +205,21 @@ class DialogueController:
         a,b=self.actors(sim)
         if a is None or b is None:return []
         if self.incoming:
-            if self.incoming.request_id:
+            if not self.acknowledged:
+                return [Choice('accept','Listen'),Choice('decline','Not right now')]
+            intent=self.session(sim).intent
+            if intent.kind==IntentKind.REQUEST_FOOD:
                 share=Action(ActionType.SHARE_FOOD,b.id,request_id=self.incoming.request_id)
                 valid=validate(share,a,sim.world,sim.resources,sim.social)
-                return [Choice('share','Give one berry',valid,'' if valid else 'You need a berry and your neighbor needs room.'),Choice('refuse','Sorry, I cannot'),Choice('goodbye','Leave conversation')]
-            valid=validate(self.incoming.action,b,sim.world,sim.resources,sim.social)
-            reason='There is no room for the offered berry.' if self.incoming.action.kind==ActionType.OFFER_FOOD else 'This invitation is no longer available.'
-            return [Choice('accept','Listen / accept invitation',valid,'' if valid else reason),Choice('decline','Not right now')]
+                result=[Choice('share','Give 1 berry',valid,'' if valid else 'You need a berry and your neighbor needs room.'),Choice('refuse','Refuse')]
+                if a.food==0:result.append(Choice('none','Explain that I have no berries'))
+                result.append(Choice('goodbye','End conversation'))
+                return result
+            if intent.kind==IntentKind.OFFER_FOOD:
+                valid=validate(sim.social.intent_action(self.session(sim)),b,sim.world,sim.resources,sim.social)
+                reason='No berry remains to offer.' if b.food==0 else 'There is no room for the offered berry.'
+                return [Choice('accept_offer','Accept 1 berry',valid,'' if valid else reason),Choice('decline_offer','Politely decline')]
+            return [Choice('reply_warm','Respond warmly'),Choice('reply_brief','Respond briefly'),Choice('goodbye','End conversation')]
         # Keep an active visit bounded without discarding unread or persisted turns.
         session=self.session(sim)
         if session is None:return []
@@ -232,16 +241,33 @@ class DialogueController:
         choice=next((c for c in self.choices(sim) if c.key==key),None)
         if not choice or not choice.enabled:return False
         a,b=self.actors(sim)
-        if key=='goodbye':self.close(sim);return True
+        if key=='goodbye':
+            if self.npc_initiated:sim.social.resolve_intent(self.session(sim),'ended')
+            self.close(sim);return True
         if key=='decline':
             prompt=self.incoming;self.incoming=None
             sim.player.decline(sim,prompt,'Player declined invitation');self.close(sim,canceled=True);return True
         action=None;actor=a;topic=key
         if self.incoming:
-            prompt=self.incoming;self.incoming=None
-            if key in ('share','refuse'):
-                action=Action(ActionType.SHARE_FOOD if key=='share' else ActionType.REFUSE_REQUEST,b.id,request_id=prompt.request_id)
-            else:actor=b;action=prompt.action
+            if key=='accept':
+                self.acknowledged=True
+                if self.incoming.request_id:
+                    session=self.session(sim)
+                    index=next((i for i in range(len(session.turns)-1,-1,-1)
+                                if session.turns[i].speaker_id==b.id and session.turns[i].purpose=='question'),None)
+                    text=session.turns[index].text if index is not None else 'Could you spare one berry?'
+                    self.current=Line(b.id,text,index);self.phase='showing';self.serial+=1
+                    return True
+                intent=self.session(sim).intent
+                actor=b
+                action=sim.social.intent_action(self.session(sim)) if intent.kind==IntentKind.REQUEST_FOOD else Action(ActionType.TALK,a.id)
+                topic='npc_intent'
+            elif key in ('share','refuse','none'):
+                action=Action(ActionType.SHARE_FOOD if key=='share' else ActionType.REFUSE_REQUEST,b.id,request_id=self.incoming.request_id)
+            elif key=='accept_offer':
+                actor=b;action=sim.social.intent_action(self.session(sim))
+            else:
+                action=Action(ActionType.TALK,b.id)
         else:
             action=Action({'request':ActionType.REQUEST_FOOD,'offer':ActionType.OFFER_FOOD}.get(key,ActionType.TALK),b.id)
         self.current=None;self.queue.clear();self.waiting=False

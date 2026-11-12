@@ -38,6 +38,25 @@ COMMON = {
 def line(social,speaker,partner,topic):
     from .characters import CHARACTERS
     key=CHARACTERS[speaker.id][1]
+    if topic=='npc_check':
+        if partner.hunger>=55:return 'You look hungry. How are you holding up?'
+        if partner.energy<=30:return 'You look tired. Are you getting enough rest?'
+        return 'I thought I would check in. How are you doing?'
+    if topic=='npc_thanks':
+        return social.dialogue_rng.choice(('I wanted to thank you for the berry you shared.', 'Your help earlier meant a lot. Thank you for sharing your food.'))
+    if topic=='npc_casual':topic='smalltalk'
+    if topic=='reply_warm':
+        intent=social.session_for(speaker).intent
+        if intent and intent.kind.value=='THANK_PLAYER':return 'You are welcome. I am glad I could help.'
+        if speaker.hunger>=55:return 'Thank you for asking. I could use a meal, but I am managing.'
+        if speaker.energy<=30:return 'Thanks for checking. I could use a little rest.'
+        return 'It is good to talk with you. I am doing all right.'
+    if topic=='reply_brief':return 'Thanks for stopping by. Take care.'
+    if topic=='decline_offer':return 'No, thank you. Please keep it.'
+    if topic=='offer_declined':return 'Of course. No worries.'
+    if topic=='prepare_offer':return 'One moment; let me get it.'
+    if topic=='npc_goodbye':return social.dialogue_rng.choice(('Thank you for the conversation. Take care.', 'It was good to speak with you. See you around.'))
+    if topic=='offer' and speaker.food==0:return 'I am sorry. I no longer have a berry to offer.'
     if topic in ('how','need_food'):
         if speaker.hunger>=85: status='I really need something to eat.'
         elif speaker.hunger>=55: status='I am getting hungry. A meal would help.'

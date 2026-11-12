@@ -98,3 +98,7 @@ Manual review: launch each four demo commands; inspect portrait identity/hat/han
 ## Files
 
 New modules: portraits.py, dialogue_view.py, dialogue_controller.py and portrait_templates.py. New assets: four original supplied PNGs plus portrait manifest/readme. New regressions: tests/test_portrait_dialogue.py. Updated integration: social.py, dialogue.py, pacing.py, simulation.py, feedback.py, rendering.py, participant_ui.py and __main__.py; one existing Participant timeout test now checks the explicit no-timeout portrait policy. README, GAMEPLAY_GUIDE and DEVELOPMENT_GUIDE link this guide. Requirements, original sprite art, energy/hunger tuning, inventory models and saved private data are preserved.
+
+## NPC-led intention repair
+
+Incoming Listen now acknowledges an invitation only. Its original session retains the offline-selected request, offer, casual greeting, observed check-in or memory-supported thanks through approach and portrait opening. The NPC speaks first, then the player sees only appropriate responses. Accepting an offered berry is a separate validated timed action; declining or canceling never transfers food. Completed outcomes end naturally after reading. Player-led menus and NPC-to-NPC bubbles are preserved. See [NPC_DIALOGUE_AGENCY.md](NPC_DIALOGUE_AGENCY.md) for implementation boundaries, verification and manual checks.

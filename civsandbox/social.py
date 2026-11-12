@@ -6,7 +6,7 @@ import math
 import os
 from pathlib import Path
 import tempfile
-from .dialogue import SocialSettings, SessionState, InteractionSession, DialogueTurn, choose_line
+from .dialogue import ConversationIntent, IntentKind, SocialSettings, SessionState, InteractionSession, DialogueTurn, choose_line
 
 
 @dataclass(frozen=True)
@@ -166,9 +166,49 @@ class SocialSystem:
         session.state = state
         self.events.append({'tick':self.session_tick, 'action':'SESSION', 'session_id':session.id,
                             'actor_id':session.initiator_id, 'target_id':session.recipient_id,
-                            'previous':previous.value, 'state':state.value, 'reason':reason, 'purpose':session.purpose})
+                            'previous':previous.value, 'state':state.value, 'reason':reason, 'purpose':session.purpose,
+                            'intent':session.intent.kind.value if session.intent else None})
 
-    def propose(self, actor, other_id, purpose, world):
+    def make_intent(self, actor, other, action, purpose='greeting', reason=''):
+        """Snapshot the selected action and its observable reason before approach."""
+        kind={"REQUEST_FOOD":IntentKind.REQUEST_FOOD,"OFFER_FOOD":IntentKind.OFFER_FOOD}.get(action.kind.value,IntentKind.CASUAL_TALK)
+        context={'selected_tick':self.tick,'reason':reason or purpose,
+                 'hunger':actor.hunger,'energy':actor.energy,'berries':actor.food,
+                 'position':actor.position,'recipient_position':other.position,
+                 'recipient_looks_hungry':other.hunger>=55,'recipient_looks_tired':other.energy<=30}
+        if kind==IntentKind.CASUAL_TALK and other.id==getattr(self,'human_id',None):
+            help_records=[m for m in self.relevant_memories(actor,{other.id})
+                          if m['actor_id']==other.id and m['target_id']==actor.id
+                          and m['result'] in ('shared one food','offered one food')]
+            help_records.sort(key=lambda m:m['tick'],reverse=True)
+            helped=next((m for m in help_records if not any(
+                session.intent and session.intent.kind==IntentKind.THANK_PLAYER
+                and session.initiator_id==actor.id and session.recipient_id==other.id
+                and session.intent_presented and session.intent_resolution in ('responded','ended','completed')
+                and session.intent.context.get('help_tick',-1)>=m['tick']
+                for session in self.sessions.values())),None)
+            if helped:
+                kind=IntentKind.THANK_PLAYER;context['help_tick']=helped['tick']
+            elif other.hunger>=55 or other.energy<=30:
+                kind=IntentKind.CHECK_ON_PLAYER
+        food=kind in (IntentKind.REQUEST_FOOD,IntentKind.OFFER_FOOD)
+        return ConversationIntent(kind,'berries' if food else None,1 if food else 0,context)
+
+    def intent_action(self, session):
+        from .actions import Action,ActionType
+        kind=session.intent.kind if session.intent else IntentKind.CASUAL_TALK
+        action={IntentKind.REQUEST_FOOD:ActionType.REQUEST_FOOD,IntentKind.OFFER_FOOD:ActionType.OFFER_FOOD}.get(kind,ActionType.TALK)
+        return Action(action,session.recipient_id,session.intent.context.get('reason','') if session.intent else '')
+
+    def resolve_intent(self,session,result):
+        if session.intent is None or session.intent_resolution is not None:return
+        session.intent_resolution=result
+        self.events.append({'tick':self.session_tick,'action':'INTENT_RESOLVED','session_id':session.id,
+                            'actor_id':session.initiator_id,'target_id':session.recipient_id,
+                            'intent':session.intent.kind.value,'item':session.intent.item,
+                            'quantity':session.intent.quantity,'result':result})
+
+    def propose(self, actor, other_id, purpose, world, *, action=None, reason=''):
         other = self.agents.get(other_id)
         kind = purpose.upper() if purpose.upper() in ("REQUEST_FOOD","OFFER_FOOD","SHARE_FOOD","REFUSE_REQUEST") else "TALK"
         essential = kind != "TALK" or self.is_modal_pair(actor,other)
@@ -182,6 +222,9 @@ class SocialSystem:
         session = InteractionSession(f'session-{self.session_sequence}', actor.id, other.id, purpose,
                                      SessionState.PROPOSED, self.tick, self.tick+self.settings.approach_timeout_ticks,
                                      target_position=other.position)
+        from .actions import Action,ActionType
+        selected=action or Action(ActionType(kind),other.id)
+        session.intent=self.make_intent(actor,other,selected,purpose,reason)
         self.sessions[session.id] = session
         self.active_sessions[actor.id] = self.active_sessions[other.id] = session.id
         self.transition(session, SessionState.APPROACHING)
@@ -250,23 +293,36 @@ class SocialSystem:
         other = self.agents[action.target]
         session = self.session_for(actor)
         if session is None:
-            session = self.propose(actor, other.id, action.kind.value.lower(), world)
+            session = self.propose(actor, other.id, action.kind.value.lower(), world,action=action)
         if session is None or set(session.participants) != {actor.id,other.id}:
             return None, 0
         self.transition(session, SessionState.ENGAGED)
         kind = action.kind.value
         duration_end = self.tick
         if kind == 'TALK' and self.is_modal_pair(actor,other):
-            speaker,partner=(other,actor) if actor.id==getattr(self,'human_id',None) else (actor,other)
-            duration_end=self.add_turn(session,speaker,partner,self.modal_topic,self.tick,True,instant)
+            if self.modal_topic in ('reply_warm','reply_brief','decline_offer'):
+                duration_end=self.add_turn(session,actor,other,self.modal_topic,self.tick,True,instant)
+                closing='offer_declined' if self.modal_topic=='decline_offer' else 'npc_goodbye'
+                duration_end=self.add_turn(session,other,actor,closing,duration_end,True,instant)
+            else:
+                speaker,partner=(other,actor) if actor.id==getattr(self,'human_id',None) else (actor,other)
+                topic=self.modal_topic
+                if actor.id==session.initiator_id and actor.id!=getattr(self,'human_id',None) and not session.intent_presented:
+                    topic={IntentKind.OFFER_FOOD:'offer',IntentKind.CASUAL_TALK:'npc_casual',
+                           IntentKind.CHECK_ON_PLAYER:'npc_check',IntentKind.THANK_PLAYER:'npc_thanks'}.get(session.intent.kind,'greeting')
+                    session.intent_presented=True
+                duration_end=self.add_turn(session,speaker,partner,topic,self.tick,True,instant)
         elif kind == 'TALK':
             purpose = 'campfire' if session.purpose == 'campfire' else 'greeting'
             duration_end = self.add_turn(session, actor, other, purpose, self.tick, False, instant)
             duration_end = self.add_turn(session, other, actor, 'reply', duration_end, False, instant)
         elif kind == 'REQUEST_FOOD':
+            session.intent_presented=True
             duration_end = self.add_turn(session, actor, other, 'question', self.tick, True, instant)
         elif kind == 'OFFER_FOOD':
-            duration_end = self.add_turn(session, actor, other, 'offer', self.tick, True, instant)
+            topic='prepare_offer' if self.is_modal_pair(actor,other) and session.intent_presented else 'offer'
+            duration_end = self.add_turn(session, actor, other, topic, self.tick, True, instant)
+            session.intent_presented=True
         else:
             duration_end = self.add_turn(session, actor, other, 'consider', self.tick, True, instant)
         self.deliver_turns(session)
@@ -288,6 +344,7 @@ class SocialSystem:
             self.complete_session(session)
 
     def complete_session(self, session):
+        self.resolve_intent(session,'completed')
         self.transition(session, SessionState.COMPLETED, session.outcome or 'completed')
         self.release_session(session)
 
@@ -306,6 +363,7 @@ class SocialSystem:
         session = self.sessions.get(session_id)
         if session is None or session.state in (SessionState.COMPLETED,SessionState.CANCELED):
             return
+        self.resolve_intent(session,'canceled')
         session.outcome = reason
         self.transition(session,SessionState.CANCELED,reason)
         self.release_session(session)
@@ -429,7 +487,17 @@ class SocialSystem:
                     self.record(agent.id, other_id, kind, "greeted", {agent.id: 1, other_id: 1})
                 session.greeting_recorded=True
         if session and kind != 'REQUEST_FOOD':
+            if session.intent:
+                intent=session.intent.kind
+                if intent==IntentKind.REQUEST_FOOD and kind in ('SHARE_FOOD','REFUSE_REQUEST'):
+                    self.resolve_intent(session,'shared' if kind=='SHARE_FOOD' else 'refused')
+                elif intent==IntentKind.OFFER_FOOD and kind=='OFFER_FOOD':self.resolve_intent(session,'accepted')
+                elif kind=='TALK' and self.modal_topic in ('reply_warm','reply_brief'):self.resolve_intent(session,'responded')
+                elif kind=='TALK' and self.modal_topic=='decline_offer' and intent==IntentKind.OFFER_FOOD:
+                    if session.intent_resolution is None:self.record(agent.id,other_id,'TALK','declined offer',{})
+                    self.resolve_intent(session,'declined')
             result = {'SHARE_FOOD':'shared one food','OFFER_FOOD':'offered one food','REFUSE_REQUEST':'refused','TALK':'greeted'}[kind]
+            if kind=='TALK' and self.modal_topic=='decline_offer':result='declined offer'
             self.resolve_session(session,agent,self.agents[other_id],result,instant)
 
     def record(self, actor_id, target_id, action, result, changes, request_id=None):

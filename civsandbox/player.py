@@ -11,6 +11,7 @@ class PlayerPrompt:
     action: Action
     request_id: str | None = None
     remaining_seconds: float = 30.0
+    session_id: str | None = None
 
 
 class PlayerController:
@@ -80,6 +81,7 @@ class PlayerController:
                 or action.target != self.agent_id
                 or action.kind in (ActionType.SHARE_FOOD, ActionType.REFUSE_REQUEST)):
             return False
+        if self.pending:return True  # Never replace an unanswered NPC invitation.
         if self.approved:
             owner, accepted, deadline = self.approved
             if sim.tick > deadline:
@@ -92,7 +94,11 @@ class PlayerController:
         if not validate(action, actor, sim.world, sim.resources, sim.social):
             return False
         self.clear()
-        self.pending = PlayerPrompt(actor.id, action)
+        session=sim.social.session_for(actor)
+        if session is None:
+            session=sim.social.propose(actor,self.agent_id,action.kind.value.lower(),sim.world,action=action)
+        if session is None:return False
+        self.pending = PlayerPrompt(actor.id, action,session_id=session.id)
         self.message = actor.name+' would like to interact. World paused for your choice.'
         return True
 
@@ -104,7 +110,7 @@ class PlayerController:
             if request.recipient_id == actor.id and request.id != self.responding_request:
                 self.clear()
                 self.pending = PlayerPrompt(request.requester_id,
-                                            Action(ActionType.REQUEST_FOOD, actor.id), request.id)
+                                            Action(ActionType.REQUEST_FOOD, actor.id), request.id,session_id=request.session_id)
                 self.message = sim.social.agents[request.requester_id].name+' asks for a berry.'
                 return
 

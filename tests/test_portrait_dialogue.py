@@ -184,7 +184,10 @@ def test_incoming_invitation_keeps_player_consent_and_no_timeout(kind):
     before=(a.food,b.food);c.continue_line(sim)
     assert [x.key for x in c.choices(sim)]==['accept','decline']
     assert c.choose('accept',sim);settle(c,sim)
-    if kind==ActionType.OFFER_FOOD:assert (a.food,b.food)==(before[0]+1,before[1]-1)
+    if kind==ActionType.OFFER_FOOD:
+        assert (a.food,b.food)==before  # Listening is not consent to the gift.
+        assert c.choose('accept_offer',sim);settle(c,sim)
+        assert (a.food,b.food)==(before[0]+1,before[1]-1)
     elif kind==ActionType.REQUEST_FOOD:
         assert c.incoming and c.incoming.request_id
         assert (a.food,b.food)==before
@@ -496,8 +499,9 @@ def test_actual_world_click_opens_nearby_npc_and_explains_out_of_range():
 def test_incoming_offer_acceptance_is_disabled_if_inventory_becomes_full():
     sim,a,b=invited(ActionType.OFFER_FOOD);c=DialogueController();assert c.open_incoming(sim)
     a.food=a.inventory.capacity;c.continue_line(sim)
-    accept=next(x for x in c.choices(sim) if x.key=='accept')
+    assert c.choose('accept',sim);settle(c,sim)
+    accept=next(x for x in c.choices(sim) if x.key=='accept_offer')
     assert not accept.enabled and 'room' in accept.reason
-    assert not c.choose('accept',sim)
-    before=(a.food,b.food);assert c.choose('decline',sim)
+    assert not c.choose('accept_offer',sim)
+    before=(a.food,b.food);assert c.choose('decline_offer',sim);settle(c,sim)
     assert not c.active and (a.food,b.food)==before

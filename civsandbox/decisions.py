@@ -205,6 +205,28 @@ class RuleBasedDecisionProvider:
                         {'need':peer.hunger*.4,'empathy':traits.get('empathy',.5)*35,
                          'sharing':traits.get('sharing',.5)*25,'cooperation':traits.get('cooperation',.5)*15,
                          'own_need':-h*.3,'risk':-risk*10},'Offer a real spare berry to a nearby hungry neighbor')
+            # Plan a purpose before travelling to an observed human neighbor.
+            # Ordinary NPC-to-NPC selection remains unchanged; no world-wide donors.
+            human=self.social.agents.get(getattr(self.social,'human_id',None))
+            separation=sum(abs(a-b) for a,b in zip(agent.position,human.position)) if human else 999
+            if (human and human is not agent and 1<separation<=4
+                    and self.social.available(agent,essential=True) and self.social.available(human,essential=True)):
+                route=self.approach(agent,human.position,world)
+                if route and food==0 and h>=self.survival.hungry and human.food>0 and agent.inventory.used<agent.inventory.capacity:
+                    if not self.social.cooldown_reason(agent,human,'REQUEST_FOOD'):
+                        add('GET_HELP',human.id,self.travel(agent,route[1])+[Action(ActionType.REQUEST_FOOD,human.id),Action(ActionType.WAIT)],
+                            {'request':90,'hunger':h*.3,'risk':-risk*8,'travel':-route[0]*2,
+                             'trust':self.social.trust_for(agent,human.id)*.1},
+                            'Approach a visible berry carrier to request one berry')
+                if (route and agent.food>=2 and h<self.survival.hungry and agent.energy>30
+                        and human.hunger>=self.survival.hungry and edible_count(human)==0
+                        and human.inventory.used<human.inventory.capacity
+                        and not self.social.cooldown_reason(agent,human,'OFFER_FOOD')):
+                    add('HELP_OTHER',human.id,self.travel(agent,route[1])+[Action(ActionType.OFFER_FOOD,human.id)],
+                        {'need':human.hunger*.4,'empathy':traits.get('empathy',.5)*35,
+                         'sharing':traits.get('sharing',.5)*25,'cooperation':traits.get('cooperation',.5)*15,
+                         'own_need':-h*.3,'risk':-risk*10,'travel':-route[0]*2},
+                        'Approach a visible hungry neighbor to offer a real spare berry')
             if food >= 2 and h < self.survival.hungry:
                 talkable = [p for p in peers if not self.social.serious_dispute(agent,p.id) and validate(Action(ActionType.TALK, p.id), agent, world, resources, self.social)]
                 if talkable:
@@ -255,23 +277,33 @@ class RuleBasedDecisionProvider:
         if plan and (self.tick >= plan.deadline or self.tick - plan.last_progress > 80):
             self.finish_plan(agent, 'failed', 'Plan deadline or progress limit')
             plan = None
-        if plan and plan.goal=='SOCIALIZE':
+        approach_session=self.social.session_for(agent) if self.social else None
+        approaching_goal=bool(plan and plan.goal in ('SOCIALIZE','GET_HELP','HELP_OTHER')
+                              and any(step.kind in (ActionType.TALK,ActionType.REQUEST_FOOD,ActionType.OFFER_FOOD) for step in plan.steps))
+        if approaching_goal and approach_session is None:
+            self.finish_plan(agent,'failed','Conversation reservation no longer available')
+            plan=None
+        if (plan and plan.goal in ('SOCIALIZE','GET_HELP','HELP_OTHER') and approach_session
+                and approach_session.initiator_id==agent.id
+                and approach_session.state in (SessionState.PROPOSED,SessionState.APPROACHING)):
             session=self.social.session_for(agent) if self.social else None
             peer=self.social.agents.get(plan.target) if self.social else None
             if (session is None or peer is None or session.state==SessionState.CANCELED
-                    or not self.social.available(peer,session)
+                    or not self.social.available(peer,session,session.intent and session.intent.item is not None)
                     or sum(abs(a-b) for a,b in zip(agent.position,peer.position))>6):
                 self.finish_plan(agent,'failed','Partner unavailable during approach')
                 plan=None
             elif not self.social.nearby(agent,peer):
                 route=self.approach(agent,peer.position,world)
                 if route:
-                    plan.steps=[Action(ActionType.MOVE_TO,route[1]),Action(ActionType.TALK,peer.id)]
+                    terminal=self.social.intent_action(session)
+                    plan.steps=[Action(ActionType.MOVE_TO,route[1]),terminal]+([Action(ActionType.WAIT)] if terminal.kind==ActionType.REQUEST_FOOD else [])
                 else:
                     self.finish_plan(agent,'failed','Partner unreachable')
                     plan=None
             elif plan.steps[0].kind==ActionType.MOVE_TO:
-                plan.steps=[Action(ActionType.TALK,peer.id)]
+                terminal=self.social.intent_action(session)
+                plan.steps=[terminal]+([Action(ActionType.WAIT)] if terminal.kind==ActionType.REQUEST_FOOD else [])
                 plan.arm(agent,self.tick)
         if plan:
             action = plan.steps[0]
@@ -311,7 +343,7 @@ class RuleBasedDecisionProvider:
                         continue
                     candidate.target = response.target
                     steps = [response] + ([Action(ActionType.WAIT)] if response.kind == ActionType.REQUEST_FOOD else [])
-                elif candidate.goal=='HELP_OTHER' and steps and steps[0].kind==ActionType.OFFER_FOOD:
+                elif candidate.goal=='HELP_OTHER' and any(step.kind==ActionType.OFFER_FOOD for step in steps):
                     willingness=.6*agent.personality.get('sharing',.5)+.2*agent.personality.get('empathy',.5)+.2*agent.personality.get('cooperation',.5)
                     if rng.random()>=max(.02,min(.98,willingness)):
                         continue
@@ -323,10 +355,11 @@ class RuleBasedDecisionProvider:
                     steps = [Action(ActionType.MOVE_TO, candidate.target)]
                 if not steps:
                     continue
-                if candidate.goal=='SOCIALIZE':
-                    peer=self.social.agents.get(candidate.target)
-                    purpose='campfire' if station_near(resources,agent,peer) else 'greeting'
-                    if self.social.propose(agent,candidate.target,purpose,world) is None:
+                terminal=next((step for step in reversed(steps) if step.kind in (ActionType.TALK,ActionType.REQUEST_FOOD,ActionType.OFFER_FOOD)),None)
+                if terminal:
+                    peer=self.social.agents.get(terminal.target)
+                    purpose=('campfire' if station_near(resources,agent,peer) else 'greeting') if terminal.kind==ActionType.TALK else terminal.kind.value.lower()
+                    if self.social.propose(agent,terminal.target,purpose,world,action=terminal,reason=candidate.reason) is None:
                         continue
                 plan = GoalPlan(candidate.goal, candidate.target, steps, self.tick, self.tick + 320, candidate.reason, candidate.rest_target)
                 plan.arm(agent, self.tick)

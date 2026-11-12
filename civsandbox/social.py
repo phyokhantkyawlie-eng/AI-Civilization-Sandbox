@@ -39,6 +39,8 @@ class SocialSystem:
         self.agents = {a.id: a for a in agents}
         self.memory_enabled = memory_enabled
         self.memory_path = Path(memory_path) if memory_path else None
+        self.modal_pair = None  # ephemeral player presentation lease, never persisted
+        self.modal_topic = 'greeting'
         self.pending: dict[str, FoodRequest] = {}
         self.pacing = None
         self.settings = settings or SocialSettings()
@@ -62,6 +64,10 @@ class SocialSystem:
             agent.trust = {other.id: 0 for other in agents if other.id != agent.id}
         if self.memory_path:
             self.load()
+
+    def is_modal_pair(self, first, second):
+        return (first is not None and second is not None and self.modal_pair is not None and {first.id,second.id}==set(self.modal_pair)
+                and getattr(self,'human_id',None) in self.modal_pair)
 
     def nearby(self, first, second):
         return sum(abs(a-b) for a, b in zip(first.position, second.position)) <= self.interaction_range
@@ -134,6 +140,10 @@ class SocialSystem:
         return True
 
     def cooldown_reason(self, actor, other, kind):
+        if self.is_modal_pair(actor,other):
+            if kind=='REQUEST_FOOD' and self.tick < self.request_cooldowns.get((actor.id,other.id),0):
+                return 'recent request; wait before asking again'
+            return None
         answering = kind in ('SHARE_FOOD', 'REFUSE_REQUEST')
         if answering:
             return None
@@ -161,7 +171,7 @@ class SocialSystem:
     def propose(self, actor, other_id, purpose, world):
         other = self.agents.get(other_id)
         kind = purpose.upper() if purpose.upper() in ("REQUEST_FOOD","OFFER_FOOD","SHARE_FOOD","REFUSE_REQUEST") else "TALK"
-        essential = kind != "TALK"
+        essential = kind != "TALK" or self.is_modal_pair(actor,other)
         if other is None or other is actor or not self.available(actor,essential=essential) or not self.available(other,essential=essential):
             return None
         if self.cooldown_reason(actor, other, kind):
@@ -184,7 +194,11 @@ class SocialSystem:
             del self.sessions[key]
 
     def add_turn(self, session, speaker, partner, purpose, due, essential=True, instant=False):
-        text = choose_line(self, speaker, partner, purpose, essential)
+        if self.is_modal_pair(speaker,partner):
+            from .portrait_templates import line
+            text = line(self,speaker,partner,purpose)
+        else:
+            text = choose_line(self, speaker, partner, purpose, essential)
         if text is None:
             return due
         seconds = self.settings.reading_seconds(text)
@@ -200,16 +214,37 @@ class SocialSystem:
         for index,turn in enumerate(session.turns):
             if turn.delivered or turn.due_tick > self.tick:
                 continue
-            turn.delivered = True
-            session.current_turn = index
-            partner = next(key for key in session.participants if key != turn.speaker_id)
-            self.repeated_lines[(turn.speaker_id,partner,turn.text)] = self.tick
-            self.events.append({'tick':self.session_tick, 'action':'DIALOGUE', 'session_id':session.id,
-                                'actor_id':turn.speaker_id, 'target_id':partner, 'turn':index,
-                                'text':turn.text, 'purpose':turn.purpose, 'source':'authored offline', 'session_validated':True,
-                                'reading_seconds':self.settings.reading_seconds(turn.text),
-                                'speaker_position':self.agents[turn.speaker_id].position,
-                                'partner_position':self.agents[partner].position})
+            self.publish_turn(session,index)
+
+    def publish_turn(self,session,index):
+        """Publish an accepted session turn once; modal reader may ignore its due time."""
+        if not 0<=index<len(session.turns):
+            return False
+        turn=session.turns[index]
+        if turn.delivered:
+            return False
+        actors=[self.agents.get(key) for key in session.participants]
+        if (any(a is None for a in actors) or not self.nearby(*actors)
+                or any(self.active_sessions.get(a.id)!=session.id for a in actors)):
+            return False
+        turn.delivered = True
+        session.current_turn = index
+        partner = next(key for key in session.participants if key != turn.speaker_id)
+        self.repeated_lines[(turn.speaker_id,partner,turn.text)] = self.tick
+        self.events.append({'tick':self.session_tick, 'action':'DIALOGUE', 'session_id':session.id,
+                            'actor_id':turn.speaker_id, 'target_id':partner, 'turn':index,
+                            'text':turn.text, 'purpose':turn.purpose, 'source':'authored offline', 'session_validated':True,
+                            'presentation':'portrait' if self.is_modal_pair(self.agents[turn.speaker_id],self.agents[partner]) else 'world',
+                            'reading_seconds':self.settings.reading_seconds(turn.text),
+                            'speaker_position':self.agents[turn.speaker_id].position,
+                            'partner_position':self.agents[partner].position})
+        return True
+
+    def present_modal_turn(self,session,index):
+        actors=[self.agents.get(key) for key in session.participants]
+        if any(a is None for a in actors) or not self.is_modal_pair(*actors):
+            return False
+        return self.publish_turn(session,index)
 
     def begin_session(self, action, actor, world, instant=False):
         other = self.agents[action.target]
@@ -221,7 +256,10 @@ class SocialSystem:
         self.transition(session, SessionState.ENGAGED)
         kind = action.kind.value
         duration_end = self.tick
-        if kind == 'TALK':
+        if kind == 'TALK' and self.is_modal_pair(actor,other):
+            speaker,partner=(other,actor) if actor.id==getattr(self,'human_id',None) else (actor,other)
+            duration_end=self.add_turn(session,speaker,partner,self.modal_topic,self.tick,True,instant)
+        elif kind == 'TALK':
             purpose = 'campfire' if session.purpose == 'campfire' else 'greeting'
             duration_end = self.add_turn(session, actor, other, purpose, self.tick, False, instant)
             duration_end = self.add_turn(session, other, actor, 'reply', duration_end, False, instant)
@@ -246,7 +284,7 @@ class SocialSystem:
             due = self.add_turn(session,other,actor,'acknowledge',due,True,instant)
         session.finish_tick = due
         self.deliver_turns(session)
-        if instant or due <= self.tick:
+        if not self.is_modal_pair(actor,other) and (instant or due <= self.tick):
             self.complete_session(session)
 
     def complete_session(self, session):
@@ -278,7 +316,8 @@ class SocialSystem:
         for request in list(self.pending.values()):
             if request.session_id == session_id:
                 del self.pending[request.id]
-                self.record(request.requester_id,request.recipient_id,'REQUEST_FOOD','canceled: '+reason,{},request.id)
+                if request.requester_id in self.agents and request.recipient_id in self.agents:
+                    self.record(request.requester_id,request.recipient_id,'REQUEST_FOOD','canceled: '+reason,{},request.id)
 
     def serious_dispute(self, actor, peer_id):
         return any(m['action']=='REFUSE_REQUEST' and m['trust_delta'] <= -4
@@ -320,7 +359,7 @@ class SocialSystem:
         if not self.nearby(agent, other):
             return "NPC out of interaction range"
         session = self.session_for(agent)
-        essential = action.kind.value != 'TALK'
+        essential = action.kind.value != 'TALK' or self.is_modal_pair(agent,other)
         if session and set(session.participants) != {agent.id,other.id}:
             return 'conflicting conversation'
         if not self.available(agent,session,essential) or not self.available(other,session,essential):
@@ -379,7 +418,16 @@ class SocialSystem:
             self.record(agent.id,other_id,kind,'offered one food',
                         {other_id:14 if self.agents[other_id].hunger>=85 else 6,agent.id:2})
         elif kind == "TALK":
-            self.record(agent.id, other_id, kind, "greeted", {agent.id: 1, other_id: 1})
+            modal = session is not None and self.is_modal_pair(agent,self.agents[other_id])
+            if not modal:
+                self.record(agent.id, other_id, kind, "greeted", {agent.id: 1, other_id: 1})
+            elif not session.greeting_recorded:
+                # Acknowledgment stays available, without farming repeated greeting
+                # trust by selecting topics or reopening during the same cooldown.
+                pair=tuple(sorted(session.participants))
+                if self.tick>=self.pair_cooldowns.get(pair,0):
+                    self.record(agent.id, other_id, kind, "greeted", {agent.id: 1, other_id: 1})
+                session.greeting_recorded=True
         if session and kind != 'REQUEST_FOOD':
             result = {'SHARE_FOOD':'shared one food','OFFER_FOOD':'offered one food','REFUSE_REQUEST':'refused','TALK':'greeted'}[kind]
             self.resolve_session(session,agent,self.agents[other_id],result,instant)

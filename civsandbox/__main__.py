@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--scenario", choices=("default", "food_shortage"), default="default")
     parser.add_argument("--provider", choices=["mock", "rule-based"])
     parser.add_argument("--animation-fps", type=float, default=8.0)
+    parser.add_argument('--dialogue-demo',choices=('mira','nyra','kairo','ren'),help='Fresh food-shortage conversation with an adjacent controlled villager')
     parser.add_argument('--interact-preview', action='store_true', help='Preview the optional gather prototype (F7)')
     parser.add_argument('--no-interact-animation', action='store_true', help='Use existing idle sprites for gathering')
     parser.add_argument("--idle-fps", type=float, default=4.0)
@@ -25,6 +26,8 @@ def main():
     parser.add_argument('--save-file', metavar='FILE', help='In-game F5/F9 checkpoint path')
     parser.add_argument('--save', metavar='FILE', help='Save a checkpoint after a headless run')
     args = parser.parse_args()
+    if args.dialogue_demo and (args.headless or args.load or args.interact_preview):
+        parser.error('--dialogue-demo requires graphics and a fresh world without another preview')
     if args.interact_preview and args.headless:
         parser.error('--interact-preview requires graphics')
     if args.save and not args.headless:
@@ -58,13 +61,19 @@ def main():
         if not args.headless:
             simulation.paused = True
     else:
-        simulation = Simulation(args.seed, create_provider(settings), settings.memory_enabled, None if args.interact_preview else memory_path, scenario=args.scenario, timing=settings.action_timing, day_clock=settings.day_clock, survival=settings.survival, wildlife_settings=settings.wildlife, social_settings=settings.social, energy_rules=settings.energy)
-    simulation.save_path = Path(args.save_file or args.load or Path(__file__).resolve().parent.parent/'data'/'world_save.json')
+        simulation = Simulation(args.seed, create_provider(settings), settings.memory_enabled, None if args.interact_preview or args.dialogue_demo else memory_path, scenario='food_shortage' if args.dialogue_demo else args.scenario, timing=settings.action_timing, day_clock=settings.day_clock, survival=settings.survival, wildlife_settings=settings.wildlife, social_settings=settings.social, energy_rules=settings.energy)
+    simulation.save_path = Path(args.save_file or args.load or Path(__file__).resolve().parent.parent/'data'/('dialogue_demo.civsave.json' if args.dialogue_demo else 'world_save.json'))
     if args.mode == 'observer' or args.headless and simulation.player:
         simulation.set_participant()
     if args.mode == 'participant':
         from .characters import CHARACTERS
         simulation.set_participant(next(key for key, (_, art) in CHARACTERS.items() if art == args.character))
+    dialogue_target=None
+    if args.dialogue_demo:
+        from .characters import CHARACTERS
+        dialogue_target=next(key for key,(_,art) in CHARACTERS.items() if art==args.dialogue_demo)
+        neighbor={'npc-1':'npc-2','npc-2':'npc-1','npc-3':'npc-4','npc-4':'npc-3'}[dialogue_target]
+        simulation.set_participant(neighbor)
     try:
         if args.headless:
             for _ in range(args.ticks):
@@ -81,7 +90,7 @@ def main():
             run(simulation, args.animation_fps,args.window_scale,args.idle_fps,
                 enable_interact_animation=settings.enable_interact_animation and not args.no_interact_animation,
                 interact_animation_seconds=settings.interact_animation_seconds,
-                interact_preview=args.interact_preview)
+                interact_preview=args.interact_preview,dialogue_target=dialogue_target)
     finally:
         simulation.close()
 

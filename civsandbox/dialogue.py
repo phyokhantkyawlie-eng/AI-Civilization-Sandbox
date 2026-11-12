@@ -63,6 +63,7 @@ class InteractionSession:
     request_id: str | None = None
     finish_tick: int | None = None
     target_position: tuple[int,int] | None = None
+    greeting_recorded: bool = False
 
     @property
     def participants(self):

@@ -71,12 +71,19 @@ class ActionProgress:
         if owner in self.jobs:
             self.release(owner)
 
+    @staticmethod
+    def face_pair(actor,other):
+        dx,dy=other.position[0]-actor.position[0],other.position[1]-actor.position[1]
+        actor.facing=("right" if dx>0 else "left") if dx else ("down" if dy>=0 else "up")
+        other.facing={"right":"left","left":"right","up":"down","down":"up"}[actor.facing]
+
     def allowed_social(self, action, actor):
         if any(self.locks.get(key, actor.id) != actor.id for key in (actor.id, action.target)):
             return False
         answering = action.kind in (ActionType.SHARE_FOOD, ActionType.REFUSE_REQUEST)
         emergency = action.kind == ActionType.REQUEST_FOOD and actor.hunger >= 85 and actor.food == 0
-        if not answering and not emergency and self.social.tick < max(self.cooldowns.get(actor.id, 0), self.cooldowns.get(action.target, 0)):
+        modal = self.social.is_modal_pair(actor,self.social.agents[action.target])
+        if not modal and not answering and not emergency and self.social.tick < max(self.cooldowns.get(actor.id, 0), self.cooldowns.get(action.target, 0)):
             return False
         # An addressed request reserves the conversation slot until answered/expired.
         for request in self.social.pending.values():
@@ -116,7 +123,10 @@ class ActionProgress:
                     self.cooldowns[member] = self.social.tick+self.social.settings.agent_cooldown_ticks
             return success
         self.sources[actor.id] = source
-        if self.held(actor) and not (self.social.needs_response(actor) and action.kind in (ActionType.SHARE_FOOD,ActionType.REFUSE_REQUEST,ActionType.EAT,ActionType.REST)):
+        modal_action = (isinstance(action,Action) and action.kind in SOCIAL_ACTIONS
+                        and isinstance(action.target,str)
+                        and self.social.is_modal_pair(actor,self.social.agents.get(action.target)))
+        if self.held(actor) and not modal_action and not (self.social.needs_response(actor) and action.kind in (ActionType.SHARE_FOOD,ActionType.REFUSE_REQUEST,ActionType.EAT,ActionType.REST)):
             actor.current_action = "WAIT"
             return True
         if self.social.active_requests(actor) and action.kind == ActionType.MOVE_TO:
@@ -158,9 +168,7 @@ class ActionProgress:
             self.locks[member] = actor.id
         if len(participants) == 2:
             other = self.social.agents[action.target]
-            dx, dy = other.position[0]-actor.position[0], other.position[1]-actor.position[1]
-            actor.facing = ("right" if dx > 0 else "left") if dx else ("down" if dy >= 0 else "up")
-            other.facing = {"right": "left", "left": "right", "up": "down", "down": "up"}[actor.facing]
+            self.face_pair(actor,other)
         actor.current_action = action.kind.value
         self.started = True
         return True

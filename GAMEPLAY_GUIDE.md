@@ -38,3 +38,10 @@ The logical world is 1100×750. `--window-scale 0.85` fits smaller displays; 1.2
 ## Optional gathering experiment
 
 F6 turns the `interact_gather` prototype on/off immediately. F7 opens a world-frozen comparison preview for all four characters (1–4; Space pauses preview). The characters retain their exact original artwork; small procedural resource-contact/pickup accents provide four phases in each direction. This is not illustrated arm articulation. Disable permanently for future launches with `ENABLE_INTERACT_ANIMATION=false`, or launch once with `--no-interact-animation`. All gameplay remains unchanged by this switch. See ENERGY_INTERACT.md for energy rates and preview commands.
+
+
+## Portrait conversations
+
+In Participant Mode, click a nearby villager or choose Talk/Ask/Offer through E. Adults in the portrait interface are the supplied illustrated versions of the same four chibi villagers. The world pauses; a selected social action resolves through the normal validator before a gift/refusal outcome is displayed. Click/Enter/Space first reveals a line, then continues. Choose with mouse, arrows/W/S, numbers and Enter; scroll for more choices on small viewports. Leave/Esc/Backspace cancels unfinished work and restores movement. Completed transfers are never undone. Incoming NPC invitations use the same interface and always require your response. NPC-to-NPC speech does not open it.
+
+Try `python -m civsandbox --dialogue-demo mira` (or nyra/kairo/ren) for an immediate real conversation with a different adjacent character under human control. Initial stock/needs are unchanged food-shortage rules, so some choices can be unavailable. Only one berry can be shared by existing social rules; cooked-meal gifts/trade/apologies are not added. Portraits default to the supplied neutral art; missing files use a sprite/name fallback. See DIALOGUE_GUIDE.md for timing, actual outcomes and all four launch commands.

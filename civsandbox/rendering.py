@@ -8,6 +8,8 @@ from .chicken_animation import ChickenView
 from .interact_animation import InteractionView, PHASES, draw_pose, draw_preview_target
 from .feedback import Feedback
 from .participant_ui import ParticipantUI
+from .dialogue_controller import DialogueController
+from .dialogue_view import DialogueView
 from .characters import CHARACTERS
 from .history import timestamp
 from .ui_state import (activity, hunger_status, energy_status, StatusThresholds,
@@ -76,6 +78,9 @@ class Renderer:
         self.chicken_views = {}
         self.feedback = Feedback()
         self.participant_ui = ParticipantUI()
+        self.dialogue = DialogueController()
+        self.dialogue_view = DialogueView()
+        self.dialogue_anchor = None
         self.ground_cache = {}
         self.lighting_cache = {}
         self.name_labels = {}
@@ -102,6 +107,7 @@ class Renderer:
             True, (151, 175, 183)), (650, 53))
         self.sync_characters(simulation)
         self.sync_interactions(simulation)
+        self.sync_dialogue(simulation)
         self.feedback.consume(simulation.events, simulation.social)
         if simulation.paused:
             self.advance_animation(0, True)
@@ -276,6 +282,8 @@ class Renderer:
             self.draw_animation_preview(simulation)
         if self.interact_preview:
             self.draw_interact_preview()
+        if self.dialogue.active:
+            self.dialogue_view.draw(self.screen,self.dialogue,simulation,self.assets)
         if self.screen is not self.display:
             pygame.transform.smoothscale(self.screen,self.display.get_size(),self.display)
         pygame.display.flip()
@@ -291,6 +299,24 @@ class Renderer:
             elif self.characters[agent.id].logical_position != agent.position:
                 # draw() used without tick callbacks (e.g. a restored snapshot): snap, never cut corners.
                 self.characters[agent.id].snap(agent.position)
+
+    def sync_dialogue(self,simulation):
+        if self.dialogue.active:
+            self.dialogue.advance(0,simulation)
+        elif simulation.player and simulation.player.pending and not self.interact_preview:
+            self.dialogue.open_incoming(simulation)
+        if self.dialogue.active:
+            self.participant_ui.stop(simulation)
+            self.interact_preview=self.animation_preview=False
+            key=(id(simulation.social),self.dialogue.session_id)
+            if key!=self.dialogue_anchor:
+                self.feedback.hide_portrait_pair((self.dialogue.player_id,self.dialogue.peer_id))
+                for actor in self.dialogue.actors(simulation):
+                    view=self.characters.get(actor.id)
+                    if view:
+                        view.snap(actor.position);view.animator.update(0,False,actor.facing)
+                self.dialogue_anchor=key
+        else:self.dialogue_anchor=None
 
     def sync_chickens(self, simulation, seconds=None):
         for key in set(self.chicken_views)-simulation.wildlife.chickens.keys():
@@ -464,6 +490,7 @@ class Renderer:
 
     def reset_after_load(self, simulation):
         self.characters.clear()
+        self.dialogue.reset();self.dialogue_anchor=None
         self.interactions.clear()
         self.character_rects.clear()
         self.chicken_rects.clear()
@@ -565,6 +592,8 @@ class Renderer:
         speech = self.feedback.speech_notice()
         notices = ([speech] if speech else []) + list(self.feedback.notices.values())
         for notice in notices:
+            if self.dialogue.active and notice.actor_id in (self.dialogue.player_id,self.dialogue.peer_id):
+                continue
             anchor = self.character_rects.get(notice.actor_id)
             if (anchor is None or notice.expires <= self.feedback.clock
                     or not self.map_rect.collidepoint(anchor.centerx, anchor.bottom-1)):
@@ -623,6 +652,7 @@ class Renderer:
         self.screen.blit(label,(x-label.get_width()//2,y-37))
 
     def draw_conversation_panel(self, simulation):
+        if self.dialogue.active:return
         entry = self.feedback.current_dialogue
         names = {a.id:a.name for a in simulation.agents}
         if not self.history_open:
@@ -817,6 +847,15 @@ def handle_event(event, simulation, ticker, renderer=None) -> bool:
         width,height=renderer.display.get_size()
         event=pygame.event.Event(event.type,{**event.dict,'pos':(round(event.pos[0]*WINDOW[0]/width),
                                                                round(event.pos[1]*WINDOW[1]/height))})
+    if renderer:
+        renderer.sync_dialogue(simulation)
+        if renderer.dialogue.active:
+            if event.type==pygame.QUIT:
+                renderer.dialogue.close(simulation,canceled=bool(renderer.dialogue.owner))
+                return False
+            renderer.dialogue_view.sync(renderer.dialogue,renderer.screen.get_size())
+            renderer.dialogue_view.handle(event,renderer.dialogue,simulation)
+            return True
     if renderer and event.type == pygame.KEYDOWN:
         if event.key == pygame.K_F6:
             renderer.enable_interact_animation = not renderer.enable_interact_animation
@@ -878,6 +917,15 @@ def handle_event(event, simulation, ticker, renderer=None) -> bool:
                 renderer.notify(simulation.player.message)
                 renderer.sync_chickens(simulation)
                 return True
+        if simulation.player:
+            hit=next((key for key,rect in reversed(list(renderer.character_rects.items()))
+                      if rect.collidepoint(event.pos) and renderer.characters[key].animator.frame.get_at(
+                          (event.pos[0]-rect.x,event.pos[1]-rect.y)).a>0),None)
+            if hit and hit!=simulation.player.agent_id:
+                ok,reason=renderer.dialogue.open(simulation,hit)
+                renderer.participant_ui.stop(simulation)
+                if not ok:renderer.notify(reason)
+                return True
         renderer.select_at(event.pos, simulation)
     if event.type == pygame.MOUSEWHEEL and renderer and renderer.world_history_open:
         renderer.news_page = max(0,renderer.news_page-event.y)
@@ -919,6 +967,17 @@ def handle_event(event, simulation, ticker, renderer=None) -> bool:
 def advance_frame(renderer, ticker, simulation, elapsed):
     """Split one frame at logical tick boundaries, retaining continuous walk phase."""
     renderer.notification_seconds = max(0,renderer.notification_seconds-elapsed)
+    renderer.sync_dialogue(simulation)
+    if renderer.dialogue.active:
+        renderer.dialogue.advance(elapsed,simulation)
+        renderer.dialogue_view.advance(elapsed,renderer.dialogue)
+        renderer.advance_animation(0,True)
+        if renderer.dialogue.active:
+            for actor in renderer.dialogue.actors(simulation):
+                view=renderer.characters.get(actor.id)
+                if view:view.animator.update(elapsed,False,actor.facing)
+        ticker.accumulator=0
+        return
     if renderer.interact_preview:
         renderer.participant_ui.stop(simulation)
         if not renderer.interact_preview_paused:
@@ -948,13 +1007,16 @@ def advance_frame(renderer, ticker, simulation, elapsed):
 
 
 def run(simulation: Simulation, animation_fps=8.0, window_scale=1.0, idle_fps=4.0, *,
-        enable_interact_animation=True,interact_animation_seconds=1.0,interact_preview=False) -> None:
+        enable_interact_animation=True,interact_animation_seconds=1.0,interact_preview=False,dialogue_target=None) -> None:
     try:
         renderer = Renderer(animation_fps,window_scale,idle_fps,
                             enable_interact_animation=enable_interact_animation,
                             interact_animation_seconds=interact_animation_seconds)
         renderer.interact_preview = interact_preview
         renderer.sync_characters(simulation)
+        if dialogue_target:
+            ok,reason=renderer.dialogue.open(simulation,dialogue_target)
+            if not ok:renderer.notify(reason)
         renderer.selected_id = simulation.player.agent_id if simulation.player else simulation.selected_id
         ticker = FixedTicker()
         clock = pygame.time.Clock()

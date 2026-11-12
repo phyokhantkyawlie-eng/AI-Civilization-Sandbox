@@ -35,6 +35,7 @@ Observer Mode runs all four autonomously. Participant Mode controls one existing
 | WASD / arrows | Participant movement; arrows adjust speed in Observer Mode |
 | E / I | Nearby actions/inspection; inventory/eating/rest |
 | Left-click chicken | Participant attack within one Manhattan tile; 25 HP per click |
+| Left-click villager | Participant portrait dialogue when nearby |
 | M / Backspace | Character/mode menu; cancel unfinished work |
 | Space / − / + | Pause/resume; simulation speed |
 | C / N | Timestamped conversations; village news |
@@ -61,6 +62,19 @@ python -m civsandbox --no-interact-animation
 ```
 
 F7 opens/closes the frozen-world preview; 1–4 selects Mira/Nyra/Kairo/Ren; Space pauses the preview. **F6 disables/enables the prototype immediately**, with original idle fallback. Persistent preference: `ENABLE_INTERACT_ANIMATION=false` in optional .env. Cycle setting: `INTERACT_ANIMATION_SECONDS=1.0`, fitted to whole cycles per gathering action. Full energy units, actual five-day comparisons, limitations and safe removal instructions: [ENERGY_INTERACT.md](ENERGY_INTERACT.md).
+
+## Portrait conversations
+
+Approach a villager in Participant Mode and click their sprite, or choose a social option through E. The new parchment/bronze interface uses your supplied adult portraits; the small world sprites remain unchanged. Click/Enter/Space reveals then continues text, arrows/numbers or mouse select choices, and Leave/Esc ends the conversation. Ordinary world time pauses while choosing/reading; selected social jobs still validate and complete on their own controlled action clock. Requests, gifts, refusals, trust and memories remain real existing social actions. NPC-to-NPC conversations stay in the world without popups.
+
+```bash
+python -m civsandbox --dialogue-demo mira
+python -m civsandbox --dialogue-demo nyra
+python -m civsandbox --dialogue-demo kairo
+python -m civsandbox --dialogue-demo ren
+```
+
+Each starts a fresh existing food-shortage world and an actual adjacent conversation, with no saved-history load or guaranteed food outcome. Portrait loading/fallbacks, controls, pause semantics, limitations and verification: [DIALOGUE_GUIDE.md](DIALOGUE_GUIDE.md).
 
 ## Save and load
 

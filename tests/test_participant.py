@@ -321,7 +321,7 @@ def test_menu_input_pause_speed_inspection_and_character_previews():
         sim.close();pygame.quit()
 
 
-def test_prompt_ui_timeout_and_pause_do_not_accelerate_simulation():
+def test_portrait_prompt_waits_without_timeout_or_world_acceleration():
     import pygame
     from civsandbox.rendering import Renderer,advance_frame
     sim,a,b=invited(ActionType.OFFER_FOOD);r=Renderer();ticker=FixedTicker();ticker.speed=4
@@ -329,11 +329,13 @@ def test_prompt_ui_timeout_and_pause_do_not_accelerate_simulation():
         r.draw(sim,ticker)
         tick=sim.tick
         advance_frame(r,ticker,sim,3)
-        assert sim.tick==tick and sim.player.pending.remaining_seconds==27
+        assert sim.tick==tick and sim.player.pending is None and r.dialogue.active
         sim.paused=True;advance_frame(r,ticker,sim,100)
-        assert sim.player.pending.remaining_seconds==27
+        assert sim.tick==tick and r.dialogue.active
         sim.paused=False;advance_frame(r,ticker,sim,27)
-        assert not sim.input_blocked and sim.tick==tick
+        assert r.dialogue.active and sim.tick==tick
+        r.dialogue.close(sim,canceled=True)
+        assert not sim.input_blocked
         assert a.food==2 and b.food==3
     finally:
         sim.close();pygame.quit()

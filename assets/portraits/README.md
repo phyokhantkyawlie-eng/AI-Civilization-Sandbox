@@ -1,0 +1,1 @@
+Portraits supplied by the project owner, copied without image modification. Stable mappings: npc-1 Mira; npc-2 Ren; npc-3 Nyra; npc-4 Kairo. Base PNGs are neutral; optional future expressions use name_expression.png and fall back to the base. World sprites remain separate.

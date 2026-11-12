@@ -53,6 +53,15 @@ class Feedback:
             self.current_dialogue = self.dialogue_queue.popleft()
             self.reading_remaining = self.current_dialogue['reading_seconds']
 
+    def hide_portrait_pair(self,pair):
+        """Suppress duplicate transient cards only; keep complete bounded history."""
+        pair=set(pair)
+        def matches(entry):return {entry['actor_id'],entry['target_id']}==pair
+        self.dialogue_queue=deque((e for e in self.dialogue_queue if not matches(e)),maxlen=self.dialogue_queue.maxlen)
+        if self.current_dialogue and matches(self.current_dialogue):
+            self.current_dialogue=None;self.reading_remaining=0
+            self.start_next_line()
+
     def speech_notice(self):
         entry = self.current_dialogue
         if entry is None or self.social is None:
@@ -90,8 +99,9 @@ class Feedback:
                     if turn.delivered and turn.speaker_id == actor and turn.text == event.get('text'):
                         entry = {key:event[key] for key in ('tick','session_id','actor_id','target_id','turn','text','reading_seconds')}
                         self.history.append(entry)
-                        self.dialogue_queue.append(entry)
-                        self.start_next_line()
+                        if event.get('presentation')!='portrait':
+                            self.dialogue_queue.append(entry)
+                            self.start_next_line()
                 continue
             # Social action notices are represented by verified session dialogue only.
             if action in ('TALK','REQUEST_FOOD','SHARE_FOOD','REFUSE_REQUEST','OFFER_FOOD'):

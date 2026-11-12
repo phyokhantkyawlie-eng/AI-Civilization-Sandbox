@@ -85,6 +85,7 @@ class Simulation:
         """Hand off existing identities without changing physical state or history."""
         if agent_id is not None and agent_id not in self.social.agents:
             raise ValueError('Unknown participant character')
+        self.social.modal_pair = None
         old = self.player
         if old:
             if old.pending:
@@ -105,7 +106,7 @@ class Simulation:
 
     @property
     def input_blocked(self):
-        return bool(self.player and self.player.pending)
+        return bool(self.social.modal_pair or self.player and self.player.pending)
 
     @property
     def time_of_day(self):

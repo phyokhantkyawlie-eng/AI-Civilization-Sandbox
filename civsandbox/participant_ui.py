@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .savegame import save_game, load_into, SaveError
 
-from .actions import Action, ActionType, validate
+from .actions import Action, ActionType, SOCIAL_ACTIONS, validate
 from .inventory import ITEM_NAMES
 from .player import nearby_options
 
@@ -147,6 +147,12 @@ class ParticipantUI:
             sim.player.answer(sim, choice[1])
             self.stop(sim)
         elif isinstance(choice, Action):
+            if choice.kind in SOCIAL_ACTIONS:
+                ok,reason=renderer.dialogue.open(sim,choice.target,choice)
+                self.stop(sim)
+                if ok:self.menu=None
+                else:renderer.notify(reason)
+                return
             if sim.player.submit(choice, sim):
                 self.menu = None
         elif isinstance(choice, tuple):
@@ -223,7 +229,8 @@ class ParticipantUI:
             renderer.text('Controls and help',(255,170),title=True)
             lines = ['M: choose Observer Mode or control a villager.',
                      'WASD / arrows: move in Participant Mode.',
-                     'E: nearby actions. I: inventory / meals / rest.',
+                     'E: nearby actions. Click a nearby villager to talk.',
+                     'Dialogue: arrows / click choices; Enter reveals / continues; Esc leaves.',
                      'F6: gather prototype on/off. F7: all-character gather preview.',
                      'Left-click a chicken within one tile: hit (25 HP). Four hits yield raw meat.',
                      'Backspace: cancel unfinished work. Esc: close menus.',

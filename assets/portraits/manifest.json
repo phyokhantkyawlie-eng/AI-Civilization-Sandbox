@@ -1,0 +1,42 @@
+{
+  "npc-1": {
+    "name": "Mira",
+    "file": "mira.png",
+    "size": [
+      1164,
+      1351
+    ],
+    "mode": "RGBA",
+    "sha256": "1d7c9b460b4885a97db8ffa988cdc155014a6aa4f18d1c5e1de618b1442b72cb"
+  },
+  "npc-2": {
+    "name": "Ren",
+    "file": "ren.png",
+    "size": [
+      1174,
+      1339
+    ],
+    "mode": "RGBA",
+    "sha256": "5f730f97c7ecb514344d3adaa881554fa5c7239921759321b9ddc6dbf1db2db0"
+  },
+  "npc-3": {
+    "name": "Nyra",
+    "file": "nyra.png",
+    "size": [
+      1116,
+      1409
+    ],
+    "mode": "RGBA",
+    "sha256": "4906f81a16559f336ec55a0aa6dbf6df4b395ac71cfc1931a3609bc8f76028e0"
+  },
+  "npc-4": {
+    "name": "Kairo",
+    "file": "kairo.png",
+    "size": [
+      1164,
+      1351
+    ],
+    "mode": "RGBA",
+    "sha256": "45d4520143dd38f93f768652e4c4d8e476479bab22ad99ffa24450be6afdfc5a"
+  }
+}
